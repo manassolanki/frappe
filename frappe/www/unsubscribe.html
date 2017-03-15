@@ -1,0 +1,40 @@
+{% extends "templates/web.html" %}
+
+{% block title %}
+	{{ heading or "Unsubscribe"}}
+{% endblock %}
+
+{% block page_content %}
+	<div class="for-unsubscribe">
+		<div class="unsubscribe-content page-card" style="margin-top: 20px;">
+			<form class="form-unsubscribe" role="form">
+				<div class="page-card-head">
+					<span class="indicator {{ "green" or indicator_color }}">Unsubscribe</span>
+				</div>
+
+				<p> {{message}} </p>
+
+				{% for email_group in email_group_list %}
+<!-- 					<div class="row" style="margin: 0px;">
+						<div class="checkbox"> 
+							<label>
+								<input type="checkbox" id="{{ email_group }}" checked="">
+								<small>{{ email_group }}</small>
+							</label>
+						</div> 	
+					</div>
+ -->
+					<div class="form-check" style="margin-left: 20px;">
+						<label class="form-check-label checkbox">
+						  <input type="checkbox" class="form-check-input" id="{{ email_group }}" checked="">
+						  <small>{{ email_group }}</small>
+						</label>
+					</div>
+				{% endfor %}
+
+				<button class="btn btn-sm btn-primary" type="submit">Unsubscribe</button>
+			
+			</form>
+		</div>
+	</div>
+{% endblock %}
