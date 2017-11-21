@@ -3,21 +3,25 @@
 
 frappe.ui.form.on('Export Template', {
 
-	onload: function(frm) {
+	setup: function(frm) {
 		var doctype_options = "";
 		for (var i=0, l=frappe.boot.user.can_import.sort().length; i<l; i++) {
 			doctype_options = doctype_options + "\n" + frappe.boot.user.can_import[i];
 		}
 		frm.get_field('reference_doctype').df.options = doctype_options;
-		cur_frm.disable_save();
+		frm.disable_save();
 	},
 
 	refresh: function(frm) {
+		frm.doc.get_template_url = '/api/method/frappe.core.doctype.export_template.export_template.get_template';
 		if (frappe.route_options) {
-			frm.doc.reference_doctype = frappe.route_options.reference_doctype;
+			frm.set_value("reference_doctype", frappe.route_options.reference_doctype)
 			frappe.route_options = null;
-			frm.events.reference_doctype(frm);
 		}
+
+		frm.add_custom_button(__("Import Data"), function() {
+			frappe.set_route('List', 'Data Import');
+		});
 	},
 
 	reference_doctype: function(frm) {
@@ -62,13 +66,11 @@ frappe.ui.form.on('Export Template', {
 	},
 
 	download_blank_template: function(frm) {
-		var get_template_url = '/api/method/frappe.core.doctype.export_template.export_template.get_template';
-		open_url_post(get_template_url, frm.events.get_export_params(frm, false));
+		open_url_post(frm.doc.get_template_url, frm.events.get_export_params(frm, false));
 	},
 
 	download_with_data: function(frm) {
-		var get_template_url = '/api/method/frappe.core.doctype.export_template.export_template.get_template';
-		open_url_post(get_template_url, frm.events.get_export_params(frm, true));
+		open_url_post(frm.doc.get_template_url, frm.events.get_export_params(frm, true));
 	},
 
 	get_export_params: function(frm, with_data) {
@@ -90,8 +92,8 @@ frappe.ui.form.on('Export Template', {
 			select_columns: JSON.stringify(columns),
 			with_data: with_data ? 'Yes' : 'No',
 			all_doctypes: 'Yes',
-			xlsx_format: frm.doc.download_in_xlsx
+			from_data_import: 'Yes',
+			excel_format: frm.doc.download_in_xlsx ? 'Yes' : 'No'
 		}
 	}
-
 });

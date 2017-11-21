@@ -13,8 +13,6 @@ from frappe.utils import cstr, formatdate, format_datetime
 from frappe.model.document import Document
 from six import string_types
 
-# data keys defined here, import in other files
-# from  frappe.core.page.data_import_tool.data_import_tool import get_data_keys
 
 class ExportTemplate(Document):
 	pass

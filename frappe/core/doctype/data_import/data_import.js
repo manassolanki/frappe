@@ -3,48 +3,33 @@
 
 frappe.ui.form.on('Data Import', {
 
-	onload: function(frm) {
+	setup: function(frm) {
 		var doctype_options = "";
 		for (var i=0, l=frappe.boot.user.can_import.sort().length; i<l; i++) {
 			doctype_options = doctype_options + "\n" + frappe.boot.user.can_import[i];
 		}
 		frm.get_field('reference_doctype').df.options = doctype_options;
+		frm.disable_save();
 	},
 
 	refresh: function(frm) {
-		if (frm.attachments.parent) {
-			frm.attachments.parent.addClass("hidden");
-		}
-		if (frm.doc.import_file) {
-			frm.get_field("reference_doctype").df.read_only = 1
-			frm.get_field("template").df.read_only = 1
-		}
-		else {
-			frm.get_field("reference_doctype").df.read_only = 0
-			frm.get_field("template").df.read_only = 0
-			frm.doc.preview_data = null;
-		}
 		frm.events.add_primary_class(frm);
-		if(!frm.doc.import_status && frm.doc.template == "Non-Template") {
-			frm.events.render_html(frm);
-			frm.doc.only_new_records = 1;
-		}
 
-		if(frm.doc.reference_doctype && !frm.doc.import_file && frm.doc.template == "Template") {
+		if(frm.doc.reference_doctype) {
 			frm.add_custom_button(__("Download template"), function() {
 				frappe.route_options = {"reference_doctype": frm.doc.reference_doctype};
 				frappe.set_route('Form', 'Export Template');
 			});
 		}
-		if (frm.doc.log_details) {
-			frm.events.write_messages(frm);
-			if (frm.doc.import_status == "Success") {
-				frm.disable_save();
-				frm.set_read_only();
-			} else {
-				frm.enable_save();
-			}
-		}
+		// if (frm.doc.log_details) {
+		// 	frm.events.write_messages(frm);
+		// 	if (frm.doc.import_status == "Success") {
+		// 		frm.disable_save();
+		// 		frm.set_read_only();
+		// 	} else {
+		// 		frm.enable_save();
+		// 	}
+		// }
 	},
 
 	add_primary_class: function(frm) {
@@ -53,8 +38,8 @@ frappe.ui.form.on('Data Import', {
 			try {
 				frm.get_field('import_button').$input.addClass("btn-primary btn-md")
 					.removeClass('btn-xs');
-				frm.get_field('import_file').$input.addClass("btn-primary btn-md")
-					.removeClass('btn-xs');
+				// frm.get_field('import_file').$input.addClass("btn-primary btn-md")
+				// 	.removeClass('btn-xs');
 				frm.class_added = true;
 			} catch (err) {
 				frm.class_added = false;
@@ -96,54 +81,54 @@ frappe.ui.form.on('Data Import', {
 		frm.save();
 	},
 
-	render_html: function(frm) {
-		var me = this;
+	// render_html: function(frm) {
+	// 	var me = this;
 
 
-		frappe.model.with_doctype(frm.doc.reference_doctype, function() {
-			if(frm.doc.reference_doctype && frm.doc.preview_data) {
-				frm.selected_doctype = frappe.get_meta(frm.doc.reference_doctype).fields;
-				me.preview_data = JSON.parse(frm.doc.preview_data);
+	// 	frappe.model.with_doctype(frm.doc.reference_doctype, function() {
+	// 		if(frm.doc.reference_doctype && frm.doc.preview_data) {
+	// 			frm.selected_doctype = frappe.get_meta(frm.doc.reference_doctype).fields;
+	// 			me.preview_data = JSON.parse(frm.doc.preview_data);
 
-				var parent_doctype = frappe.get_doc('DocType', frm.doc.reference_doctype);
-				parent_doctype["reqd"] = true;
-				var doctype_list = [parent_doctype];
-				frappe.meta.get_table_fields(frm.doc.reference_doctype).forEach(function(df) {
-					var d = frappe.get_doc('DocType', df.options);
-					d["reqd"]=df.reqd;
-					doctype_list.push(d);
-				});
+	// 			var parent_doctype = frappe.get_doc('DocType', frm.doc.reference_doctype);
+	// 			parent_doctype["reqd"] = true;
+	// 			var doctype_list = [parent_doctype];
+	// 			frappe.meta.get_table_fields(frm.doc.reference_doctype).forEach(function(df) {
+	// 				var d = frappe.get_doc('DocType', df.options);
+	// 				d["reqd"]=df.reqd;
+	// 				doctype_list.push(d);
+	// 			});
 
-				console.log(" in render template");
+	// 			console.log(" in render template");
 				
-				$(frm.fields_dict.file_preview.wrapper).empty();
-				$(frappe.render_template("file_preview_template", {
-					imported_data: me.preview_data, 
-					doctype_list:doctype_list
-				}))
-				.appendTo(frm.fields_dict.file_preview.wrapper);
+	// 			$(frm.fields_dict.file_preview.wrapper).empty();
+	// 			$(frappe.render_template("file_preview_template", {
+	// 				imported_data: me.preview_data, 
+	// 				doctype_list:doctype_list
+	// 			}))
+	// 			.appendTo(frm.fields_dict.file_preview.wrapper);
 
-				me.selected_columns = JSON.parse(frm.doc.selected_columns);
+	// 			me.selected_columns = JSON.parse(frm.doc.selected_columns);
 
-				var count = 0;
-				$(frm.fields_dict.file_preview.wrapper).find("select.column-map" )
-					.each(function(index) {
+	// 			var count = 0;
+	// 			$(frm.fields_dict.file_preview.wrapper).find("select.column-map" )
+	// 				.each(function(index) {
 
-						var tmp = me.selected_columns[count].slice(0,2).join(",")
-						$(this).val(tmp)
-						if (!me.selected_columns[count][0]) {
-							$(this).parent().addClass("has-error");
-						}
+	// 					var tmp = me.selected_columns[count].slice(0,2).join(",")
+	// 					$(this).val(tmp)
+	// 					if (!me.selected_columns[count][0]) {
+	// 						$(this).parent().addClass("has-error");
+	// 					}
 
-						$(this).on("change",function() {
-							frm.save();
-						})
-						count++;
-				});
-			}
-		});
-		frm.doc.flag_file_preview = 1;
-	},
+	// 					$(this).on("change",function() {
+	// 						frm.save();
+	// 					})
+	// 					count++;
+	// 			});
+	// 		}
+	// 	});
+	// 	frm.doc.flag_file_preview = 1;
+	// },
 
 	import_button: function(frm) {
 		if (!frm.doc.import_file) {
