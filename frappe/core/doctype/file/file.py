@@ -10,12 +10,10 @@ naming for same name files: file.gif, file-1.gif, file-2.gif etc
 
 import frappe
 import json
-import urllib
 import os
 import shutil
 import requests
 import requests.exceptions
-import StringIO
 import mimetypes, imghdr
 
 from frappe.utils.file_manager import delete_file_data_content, get_content_hash, get_random_filename
@@ -23,6 +21,8 @@ from frappe import _
 from frappe.utils.nestedset import NestedSet
 from frappe.utils import strip, get_files_path
 from PIL import Image, ImageOps
+from six import StringIO, string_types
+from six.moves.urllib.parse import unquote
 import zipfile
 
 class FolderNotEmpty(frappe.ValidationError): pass
@@ -76,6 +76,7 @@ class File(NestedSet):
 
 		if frappe.db.exists('File', {'name': self.name, 'is_folder': 0}):
 			if not self.is_folder and (self.is_private != self.db_get('is_private')):
+				old_file_url = self.file_url
 				private_files = frappe.get_site_path('private', 'files')
 				public_files = frappe.get_site_path('public', 'files')
 
@@ -90,6 +91,11 @@ class File(NestedSet):
 						os.path.join(private_files, self.file_name))
 
 					self.file_url = "/private/files/{0}".format(self.file_name)
+
+			# update documents image url with new file url
+			if self.attached_to_doctype and self.attached_to_name and \
+				frappe.db.get_value(self.attached_to_doctype, self.attached_to_name, "image") == old_file_url:
+				frappe.db.set_value(self.attached_to_doctype, self.attached_to_name, "image", self.file_url)
 
 	def set_folder_size(self):
 		"""Set folder size if folder"""
@@ -170,7 +176,7 @@ class File(NestedSet):
 		super(File, self).on_trash()
 		self.delete_file()
 
-	def make_thumbnail(self):
+	def make_thumbnail(self, set_as_thumbnail=True, width=300, height=300, suffix="small", crop=False):
 		if self.file_url:
 			if self.file_url.startswith("/files"):
 				try:
@@ -184,21 +190,25 @@ class File(NestedSet):
 				except (requests.exceptions.HTTPError, requests.exceptions.SSLError, IOError):
 					return
 
-			thumbnail = ImageOps.fit(
-				image,
-				(300, 300),
-				Image.ANTIALIAS
-			)
+			size = width, height
+			if crop:
+				image = ImageOps.fit(image, size, Image.ANTIALIAS)
+			else:
+				image.thumbnail(size, Image.ANTIALIAS)
 
-			thumbnail_url = filename + "_small." + extn
+			thumbnail_url = filename + "_" + suffix + "." + extn
 
 			path = os.path.abspath(frappe.get_site_path("public", thumbnail_url.lstrip("/")))
 
 			try:
-				thumbnail.save(path)
+				image.save(path)
+
+				if set_as_thumbnail:
+					self.db_set("thumbnail_url", thumbnail_url)
+
 				self.db_set("thumbnail_url", thumbnail_url)
 			except IOError:
-				frappe.msgprint("Unable to write file format for {0}".format(path))
+				frappe.msgprint(_("Unable to write file format for {0}").format(path))
 				return
 
 			return thumbnail_url
@@ -215,13 +225,17 @@ class File(NestedSet):
 
 	def check_reference_doc_permission(self):
 		"""Check if permission exists for reference document"""
+		if not frappe.db.exists(self.attached_to_doctype, self.attached_to_name):
+			# document is already deleted before deleting attachment
+			return
+
 		if self.attached_to_name:
 			# check persmission
 			try:
 				if not self.flags.ignore_permissions and \
 					not frappe.has_permission(self.attached_to_doctype,
 						"write", self.attached_to_name):
-					frappe.throw(frappe._("No permission to write / remove."),
+					frappe.throw(frappe._("Cannot delete file as it belongs to {0} {1} for which you do not have permissions").format(self.attached_to_doctype, self.attached_to_name),
 						frappe.PermissionError)
 			except frappe.DoesNotExistError:
 				pass
@@ -308,7 +322,7 @@ def create_new_folder(file_name, folder):
 
 @frappe.whitelist()
 def move_file(file_list, new_parent, old_parent):
-	if isinstance(file_list, basestring):
+	if isinstance(file_list, string_types):
 		file_list = json.loads(file_list)
 
 	for file_obj in file_list:
@@ -328,7 +342,12 @@ def setup_folder_path(filename, new_parent):
 
 def get_extension(filename, extn, content):
 	mimetype = None
+
 	if extn:
+		# remove '?' char and parameters from extn if present
+		if '?' in extn:
+			extn = extn.split('?', 1)[0]
+
 		mimetype = mimetypes.guess_type(filename + "." + extn)[0]
 
 	if mimetype is None or not mimetype.startswith("image/") and content:
@@ -343,7 +362,7 @@ def get_local_image(file_url):
 	try:
 		image = Image.open(file_path)
 	except IOError:
-		frappe.msgprint("Unable to read file format for {0}".format(file_url))
+		frappe.msgprint(_("Unable to read file format for {0}").format(file_url))
 		raise
 
 	content = None
@@ -363,19 +382,19 @@ def get_local_image(file_url):
 	return image, filename, extn
 
 def get_web_image(file_url):
-	# downlaod
+	# download
 	file_url = frappe.utils.get_url(file_url)
 	r = requests.get(file_url, stream=True)
 	try:
 		r.raise_for_status()
-	except requests.exceptions.HTTPError, e:
+	except requests.exceptions.HTTPError as e:
 		if "404" in e.args[0]:
 			frappe.msgprint(_("File '{0}' not found").format(file_url))
 		else:
-			frappe.msgprint("Unable to read file format for {0}".format(file_url))
+			frappe.msgprint(_("Unable to read file format for {0}").format(file_url))
 		raise
 
-	image = Image.open(StringIO.StringIO(r.content))
+	image = Image.open(StringIO(r.content))
 
 	try:
 		filename, extn = file_url.rsplit("/", 1)[1].rsplit(".", 1)
@@ -386,7 +405,7 @@ def get_web_image(file_url):
 		extn = None
 
 	extn = get_extension(filename, extn, r.content)
-	filename = "/files/" + strip(urllib.unquote(filename))
+	filename = "/files/" + strip(unquote(filename))
 
 	return image, filename, extn
 
@@ -404,3 +423,24 @@ def unzip_file(name):
 	'''Unzip the given file and make file records for each of the extracted files'''
 	file_obj = frappe.get_doc('File', name)
 	file_obj.unzip()
+
+@frappe.whitelist()
+def get_attached_images(doctype, names):
+	'''get list of image urls attached in form
+	returns {name: ['image.jpg', 'image.png']}'''
+
+	if isinstance(names, string_types):
+		names = json.loads(names)
+
+	img_urls = frappe.db.get_list('File', filters={
+		'attached_to_doctype': doctype,
+		'attached_to_name': ('in', names),
+		'is_folder': 0
+	}, fields=['file_url', 'attached_to_name as docname'])
+
+	out = frappe._dict()
+	for i in img_urls:
+		out[i.docname] = out.get(i.docname, [])
+		out[i.docname].append(i.file_url)
+
+	return out

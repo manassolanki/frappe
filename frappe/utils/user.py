@@ -7,7 +7,9 @@ import frappe, json
 from frappe import _dict
 import frappe.share
 from frappe.utils import cint
+from frappe.boot import get_allowed_reports
 from frappe.permissions import get_roles, get_valid_perms
+from frappe.core.doctype.domain_settings.domain_settings import get_active_modules
 
 class UserPermissions:
 	"""
@@ -42,7 +44,7 @@ class UserPermissions:
 				user = frappe.get_doc("User", self.name).as_dict()
 			except frappe.DoesNotExistError:
 				pass
-			except Exception, e:
+			except Exception as e:
 				# install boo-boo
 				if e.args[0] != 1146: raise
 
@@ -62,10 +64,13 @@ class UserPermissions:
 	def build_doctype_map(self):
 		"""build map of special doctype properties"""
 
+		active_domains = frappe.get_active_domains()
+
 		self.doctype_map = {}
 		for r in frappe.db.sql("""select name, in_create, issingle, istable,
-			read_only, module from tabDocType""", as_dict=1):
-			self.doctype_map[r['name']] = r
+			read_only, restrict_to_domain, module from tabDocType""", as_dict=1):
+			if (not r.restrict_to_domain) or (r.restrict_to_domain in active_domains):
+				self.doctype_map[r['name']] = r
 
 	def build_perm_map(self):
 		"""build map of permissions at level 0"""
@@ -90,6 +95,7 @@ class UserPermissions:
 		self.build_perm_map()
 		user_shared = frappe.share.get_shared_doctypes()
 		no_list_view_link = []
+		active_modules = get_active_modules() or []
 
 		for dt in self.doctype_map:
 			dtp = self.doctype_map[dt]
@@ -130,8 +136,11 @@ class UserPermissions:
 				if not dtp.get('istable'):
 					if not dtp.get('issingle') and not dtp.get('read_only'):
 						self.can_search.append(dt)
-					if not dtp.get('module') in self.allow_modules:
-						self.allow_modules.append(dtp.get('module'))
+					if dtp.get('module') not in self.allow_modules:
+						if active_modules and dtp.get('module') not in active_modules:
+							pass
+						else:
+							self.allow_modules.append(dtp.get('module'))
 
 		self.can_write += self.can_create
 		self.can_write += self.in_create
@@ -187,9 +196,9 @@ class UserPermissions:
 		return self.can_read
 
 	def load_user(self):
-		d = frappe.db.sql("""select email, first_name, last_name,
-			email_signature, user_type, language, background_image, background_style, mute_sounds
-			from tabUser where name = %s""", (self.name,), as_dict=1)[0]
+		d = frappe.db.sql("""select email, first_name, last_name, creation,
+			email_signature, user_type, language, background_image, background_style,
+			mute_sounds, send_me_a_copy from tabUser where name = %s""", (self.name,), as_dict=1)[0]
 
 		if not self.can_read:
 			self.build_permissions()
@@ -204,17 +213,13 @@ class UserPermissions:
 			"can_get_report", "allow_modules", "all_read", "can_search",
 			"in_create", "can_export", "can_import", "can_print", "can_email",
 			"can_set_user_permissions"):
-
 			d[key] = list(set(getattr(self, key)))
 
 		d.all_reports = self.get_all_reports()
 		return d
 
 	def get_all_reports(self):
-		reports =  frappe.db.sql("""select name, report_type, ref_doctype from tabReport
-		    where ref_doctype in ('{0}') and disabled = 0""".format("', '".join(self.can_get_report)), as_dict=1)
-
-		return frappe._dict((d.name, d) for d in reports)
+		return get_allowed_reports()
 
 def get_user_fullname(user):
 	fullname = frappe.db.sql("SELECT CONCAT_WS(' ', first_name, last_name) FROM `tabUser` WHERE name=%s", (user,))
@@ -238,7 +243,7 @@ def get_system_managers(only_name=False):
 		as fullname from tabUser p
 		where docstatus < 2 and enabled = 1
 		and name not in ({})
-		and exists (select * from tabUserRole ur
+		and exists (select * from `tabHas Role` ur
 			where ur.parent = p.name and ur.role="System Manager")
 		order by creation desc""".format(", ".join(["%s"]*len(STANDARD_USERS))),
 			STANDARD_USERS, as_dict=True)
@@ -263,6 +268,7 @@ def add_system_manager(email, first_name=None, last_name=None, send_welcome_emai
 		"user_type": "System User",
 		"send_welcome_email": 1 if send_welcome_email else 0
 	})
+
 	user.insert()
 
 	# add roles
@@ -337,4 +343,3 @@ def reset_simultaneous_sessions(user_limit):
 		else:
 			frappe.db.set_value("User", user.name, "simultaneous_sessions", 1)
 			user_limit = user_limit - 1
-

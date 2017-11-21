@@ -12,10 +12,7 @@ from frappe.website.utils import find_first_image, get_comment_list
 
 class BlogPost(WebsiteGenerator):
 	website = frappe._dict(
-		condition_field = "published",
-		template = "templates/generators/blog_post.html",
-		order_by = "published_on desc",
-		page_title_field = "title"
+		order_by = "published_on desc"
 	)
 
 	def make_route(self):
@@ -50,7 +47,7 @@ class BlogPost(WebsiteGenerator):
 	def get_context(self, context):
 		# this is for double precaution. usually it wont reach this code if not published
 		if not cint(self.published):
-			raise Exception, "This blog has not been published yet!"
+			raise Exception("This blog has not been published yet!")
 
 		# temp fields
 		context.full_name = get_fullname(self.owner)
@@ -84,34 +81,39 @@ class BlogPost(WebsiteGenerator):
 
 		context.category = frappe.db.get_value("Blog Category",
 			context.doc.blog_category, ["title", "route"], as_dict=1)
-		context.parents = [{"title": context.category.title, "name":
-			context.category.route}]
+		context.parents = [{"name": _("Home"), "route":"/"},
+			{"name": "Blog", "route": "/blog"},
+			{"label": context.category.title, "route":context.category.route}]
 
 def get_list_context(context=None):
 	list_context = frappe._dict(
 		template = "templates/includes/blog/blog.html",
-		row_template = "templates/includes/blog/blog_row.html",
 		get_list = get_blog_list,
 		hide_filters = True,
 		children = get_children(),
-		show_search = True,
+		# show_search = True,
 		title = _('Blog')
 	)
 
-	if frappe.local.form_dict.blog_category:
-		list_context.sub_title = _("Posts filed under {0}").format(get_blog_category(frappe.local.form_dict.blog_category))
+	category = frappe.local.form_dict.blog_category or frappe.local.form_dict.category
+	if category:
+		category_title = get_blog_category(category)
+		list_context.sub_title = _("Posts filed under {0}").format(category_title)
+		list_context.title = category_title
 
 	elif frappe.local.form_dict.blogger:
 		blogger = frappe.db.get_value("Blogger", {"name": frappe.local.form_dict.blogger}, "full_name")
 		list_context.sub_title = _("Posts by {0}").format(blogger)
+		list_context.title = blogger
 
 	elif frappe.local.form_dict.txt:
 		list_context.sub_title = _('Filtered by "{0}"').format(frappe.local.form_dict.txt)
 
 	if list_context.sub_title:
-		list_context.parents = [{'label': _('All Posts'), 'route': 'blog'}]
+		list_context.parents = [{"name": _("Home"), "route": "/"},
+								{"name": "Blog", "route": "/blog"}]
 	else:
-		list_context.parents = []
+		list_context.parents = [{"name": _("Home"), "route": "/"}]
 
 	list_context.update(frappe.get_doc("Blog Settings", "Blog Settings").as_dict(no_default_fields=True))
 	return list_context
@@ -132,9 +134,9 @@ def clear_blog_cache():
 	clear_cache("writers")
 
 def get_blog_category(route):
-	return frappe.db.get_value("Blog Category", {"route": route }) or route
+	return frappe.db.get_value("Blog Category", {"name": route}, "title") or route
 
-def get_blog_list(doctype, txt=None, filters=None, limit_start=0, limit_page_length=20):
+def get_blog_list(doctype, txt=None, filters=None, limit_start=0, limit_page_length=20, order_by=None):
 	conditions = []
 	if filters:
 		if filters.blogger:
@@ -174,6 +176,7 @@ def get_blog_list(doctype, txt=None, filters=None, limit_start=0, limit_page_len
 	posts = frappe.db.sql(query, as_dict=1)
 
 	for post in posts:
+		post.cover_image = find_first_image(post.content)
 		post.published = global_date_format(post.creation)
 		post.content = strip_html_tags(post.content[:340])
 		if not post.comments:
@@ -187,7 +190,7 @@ def get_blog_list(doctype, txt=None, filters=None, limit_start=0, limit_page_len
 		post.category = frappe.db.get_value('Blog Category', post.blog_category,
 			['route', 'title'], as_dict=True)
 
-		if (not "http:" in post.avatar or "https:" in post.avatar) and not post.avatar.startswith("/"):
+		if post.avatar and (not "http:" in post.avatar and not "https:" in post.avatar) and not post.avatar.startswith("/"):
 			post.avatar = "/" + post.avatar
 
 	return posts

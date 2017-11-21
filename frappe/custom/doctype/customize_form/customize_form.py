@@ -27,7 +27,8 @@ doctype_properties = {
 	'quick_entry': 'Check',
 	'editable_grid': 'Check',
 	'max_attachments': 'Int',
-	'image_view': 'Check'
+	'image_view': 'Check',
+	'track_changes': 'Check',
 }
 
 docfield_properties = {
@@ -44,6 +45,7 @@ docfield_properties = {
 	'in_list_view': 'Check',
 	'in_standard_filter': 'Check',
 	'in_global_search': 'Check',
+	'bold': 'Check',
 	'hidden': 'Check',
 	'collapsible': 'Check',
 	'collapsible_depends_on': 'Data',
@@ -58,12 +60,15 @@ docfield_properties = {
 	'read_only': 'Check',
 	'length': 'Int',
 	'columns': 'Int',
-	'remember_last_selected_value': 'Check'
+	'remember_last_selected_value': 'Check',
+	'allow_bulk_edit': 'Check',
 }
 
 allowed_fieldtype_change = (('Currency', 'Float', 'Percent'), ('Small Text', 'Data'),
-	('Text', 'Data'), ('Text', 'Text Editor', 'Code'), ('Data', 'Select'),
-	('Text', 'Small Text'))
+	('Text', 'Data'), ('Text', 'Text Editor', 'Code', 'Signature'), ('Data', 'Select'),
+	('Text', 'Small Text'), ('Text', 'Data', 'Barcode'), ('Code', 'Geolocation'))
+
+allowed_fieldtype_for_options_change = ('Read Only', 'HTML', 'Select', 'Data')
 
 class CustomizeForm(Document):
 	def on_update(self):
@@ -103,7 +108,7 @@ class CustomizeForm(Document):
 		'''Create, update custom translation for this doctype'''
 		current = self.get_name_translation()
 		if current:
-			if self.label and current!=self.label:
+			if self.label and current.target_name != self.label:
 				frappe.db.set_value('Translation', current.name, 'target_name', self.label)
 				frappe.translate.clear_cache()
 			else:
@@ -158,16 +163,13 @@ class CustomizeForm(Document):
 					property_type=doctype_properties[property])
 
 		for df in self.get("fields"):
-			if df.get("__islocal"):
-				continue
-
 			meta_df = meta.get("fields", {"fieldname": df.fieldname})
 
 			if not meta_df or meta_df[0].get("is_custom_field"):
 				continue
 
 			for property in docfield_properties:
-				if property != "idx" and df.get(property) != meta_df[0].get(property):
+				if property != "idx" and (df.get(property) or '') != (meta_df[0].get(property) or ''):
 					if property == "fieldtype":
 						self.validate_fieldtype_change(df, meta_df[0].get(property), df.get(property))
 
@@ -192,6 +194,10 @@ class CustomizeForm(Document):
 						and frappe.db.get_value("DocField", {"parent": self.doc_type, "fieldname": df.fieldname}, "read_only")==1):
 						# if docfield has read_only checked and user is trying to make it editable, don't allow it
 						frappe.msgprint(_("You cannot unset 'Read Only' for field {0}").format(df.label))
+						continue
+
+					elif property == "options" and df.get("fieldtype") not in allowed_fieldtype_for_options_change:
+						frappe.msgprint(_("You can't set 'Options' for field {0}").format(df.label))
 						continue
 
 					self.make_property_setter(property=property, value=df.get(property),
@@ -298,7 +304,7 @@ class CustomizeForm(Document):
 		else:
 			try:
 				property_value = frappe.db.get_value("DocType", self.doc_type, property_name)
-			except Exception, e:
+			except Exception as e:
 				if e.args[0]==1054:
 					property_value = None
 				else:
@@ -311,6 +317,7 @@ class CustomizeForm(Document):
 		for allowed_changes in allowed_fieldtype_change:
 			if (old_value in allowed_changes and new_value in allowed_changes):
 				allowed = True
+				break
 		if not allowed:
 			frappe.throw(_("Fieldtype cannot be changed from {0} to {1} in row {2}").format(old_value, new_value, df.idx))
 
@@ -319,6 +326,6 @@ class CustomizeForm(Document):
 			return
 
 		frappe.db.sql("""delete from `tabProperty Setter` where doc_type=%s
-			and ifnull(field_name, '')!='naming_series'""", self.doc_type)
+			and !(`field_name`='naming_series' and `property`='options')""", self.doc_type)
 		frappe.clear_cache(doctype=self.doc_type)
 		self.fetch_to_customize()

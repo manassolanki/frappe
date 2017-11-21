@@ -5,9 +5,14 @@ from __future__ import unicode_literals
 """build query for doclistview and return results"""
 
 import frappe, json
+from six.moves import range
 import frappe.permissions
 from frappe.model.db_query import DatabaseQuery
 from frappe import _
+from six import text_type, string_types, StringIO
+
+# imports - third-party imports
+import pymysql
 
 @frappe.whitelist()
 def get():
@@ -25,17 +30,39 @@ def get_form_params():
 	data = frappe._dict(frappe.local.form_dict)
 
 	del data["cmd"]
+	if "csrf_token" in data:
+		del data["csrf_token"]
 
-	if isinstance(data.get("filters"), basestring):
+	if isinstance(data.get("filters"), string_types):
 		data["filters"] = json.loads(data["filters"])
-	if isinstance(data.get("fields"), basestring):
+	if isinstance(data.get("fields"), string_types):
 		data["fields"] = json.loads(data["fields"])
-	if isinstance(data.get("docstatus"), basestring):
+	if isinstance(data.get("docstatus"), string_types):
 		data["docstatus"] = json.loads(data["docstatus"])
-	if isinstance(data.get("save_list_settings"), basestring):
-		data["save_list_settings"] = json.loads(data["save_list_settings"])
+	if isinstance(data.get("save_user_settings"), string_types):
+		data["save_user_settings"] = json.loads(data["save_user_settings"])
 	else:
-		data["save_list_settings"] = True
+		data["save_user_settings"] = True
+
+	doctype = data["doctype"]
+	fields = data["fields"]
+
+	for field in fields:
+		key = field.split(" as ")[0]
+
+		if "." in key:
+			parenttype, fieldname = key.split(".")[0][4:-1], key.split(".")[1].strip("`")
+		else:
+			parenttype = data.doctype
+			fieldname = fieldname.strip("`")
+
+		df = frappe.get_meta(parenttype).get_field(fieldname)
+
+		report_hide = df.report_hide if df else None
+
+		# remove the field from the query if the report hide flag is set
+		if report_hide:
+			fields.remove(field)
 
 
 	# queries must always be server side
@@ -102,6 +129,11 @@ def export_query():
 
 	frappe.permissions.can_export(doctype, raise_exception=True)
 
+	if 'selected_items' in form_params:
+		si = json.loads(frappe.form_dict.get('selected_items'))
+		form_params["filters"] = {"name": ("in", si)}
+		del form_params["selected_items"]
+
 	db_query = DatabaseQuery(doctype)
 	ret = db_query.execute(**form_params)
 
@@ -116,16 +148,17 @@ def export_query():
 
 		# convert to csv
 		import csv
-		from cStringIO import StringIO
+		from frappe.utils.xlsxutils import handle_html
 
 		f = StringIO()
 		writer = csv.writer(f)
 		for r in data:
 			# encode only unicode type strings and not int, floats etc.
-			writer.writerow(map(lambda v: isinstance(v, unicode) and v.encode('utf-8') or v, r))
+			writer.writerow([handle_html(frappe.as_unicode(v)).encode('utf-8') \
+				if isinstance(v, string_types) else v for v in r])
 
 		f.seek(0)
-		frappe.response['result'] = unicode(f.read(), 'utf-8')
+		frappe.response['result'] = text_type(f.read(), 'utf-8')
 		frappe.response['type'] = 'csv'
 		frappe.response['doctype'] = doctype
 
@@ -147,7 +180,7 @@ def append_totals_row(data):
 	totals.extend([""]*len(data[0]))
 
 	for row in data:
-		for i in xrange(len(row)):
+		for i in range(len(row)):
 			if isinstance(row[i], (float, int)):
 				totals[i] = (totals[i] or 0) + row[i]
 	data.append(totals)
@@ -211,21 +244,33 @@ def get_stats(stats, doctype, filters=[]):
 		filters = json.loads(filters)
 	stats = {}
 
-	columns = frappe.db.get_table_columns(doctype)
+	try:
+		columns = frappe.db.get_table_columns(doctype)
+	except pymysql.InternalError:
+		# raised when _user_tags column is added on the fly
+		columns = []
+
 	for tag in tags:
 		if not tag in columns: continue
-		tagcount = frappe.get_list(doctype, fields=[tag, "count(*)"],
-			#filters=["ifnull(`%s`,'')!=''" % tag], group_by=tag, as_list=True)
-			filters = filters + ["ifnull(`%s`,'')!=''" % tag], group_by = tag, as_list = True)
+		try:
+			tagcount = frappe.get_list(doctype, fields=[tag, "count(*)"],
+				#filters=["ifnull(`%s`,'')!=''" % tag], group_by=tag, as_list=True)
+				filters = filters + ["ifnull(`%s`,'')!=''" % tag], group_by = tag, as_list = True)
 
-		if tag=='_user_tags':
-			stats[tag] = scrub_user_tags(tagcount)
-			stats[tag].append(["No Tags", frappe.get_list(doctype,
-				fields=[tag, "count(*)"],
-				filters=filters +["({0} = ',' or {0} is null)".format(tag)], as_list=True)[0][1]])
-		else:
-			stats[tag] = tagcount
+			if tag=='_user_tags':
+				stats[tag] = scrub_user_tags(tagcount)
+				stats[tag].append([_("No Tags"), frappe.get_list(doctype,
+					fields=[tag, "count(*)"],
+					filters=filters +["({0} = ',' or {0} = '' or {0} is null)".format(tag)], as_list=True)[0][1]])
+			else:
+				stats[tag] = tagcount
 
+		except frappe.SQLError:
+			# does not work for child tables
+			pass
+		except pymysql.InternalError:
+			# raised when _user_tags column is added on the fly
+			pass
 	return stats
 
 @frappe.whitelist()
@@ -297,26 +342,35 @@ def build_match_conditions(doctype, as_condition=True):
 	else:
 		return match_conditions
 
-def get_filters_cond(doctype, filters, conditions):
+def get_filters_cond(doctype, filters, conditions, ignore_permissions=None, with_match_conditions=False):
+	if isinstance(filters, string_types):
+		filters = json.loads(filters)
+
 	if filters:
 		flt = filters
 		if isinstance(filters, dict):
 			filters = filters.items()
 			flt = []
 			for f in filters:
-				if isinstance(f[1], basestring) and f[1][0] == '!':
+				if isinstance(f[1], string_types) and f[1][0] == '!':
 					flt.append([doctype, f[0], '!=', f[1][1:]])
+				elif isinstance(f[1], (list, tuple)) and \
+					f[1][0] in (">", "<", ">=", "<=", "like", "not like", "in", "not in", "between"):
+
+					flt.append([doctype, f[0], f[1][0], f[1][1]])
 				else:
-					value = frappe.db.escape(f[1]) if isinstance(f[1], basestring) else f[1]
-					flt.append([doctype, f[0], '=', value])
+					flt.append([doctype, f[0], '=', f[1]])
 
 		query = DatabaseQuery(doctype)
 		query.filters = flt
 		query.conditions = conditions
-		query.build_filter_conditions(flt, conditions)
+
+		if with_match_conditions:
+			query.build_match_conditions()
+
+		query.build_filter_conditions(flt, conditions, ignore_permissions)
 
 		cond = ' and ' + ' and '.join(query.conditions)
 	else:
 		cond = ''
 	return cond
-

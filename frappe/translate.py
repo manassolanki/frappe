@@ -1,7 +1,9 @@
 # Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 
-from __future__ import unicode_literals
+from __future__ import unicode_literals, print_function
+
+from six import iteritems, text_type, string_types
 
 """
 	frappe.translate
@@ -28,8 +30,8 @@ def guess_language(lang_list=None):
 
 	for l in lang_codes:
 		code = l.strip()
-		if not isinstance(code, unicode):
-			code = unicode(code, 'utf-8')
+		if not isinstance(code, text_type):
+			code = text_type(code, 'utf-8')
 		if code in lang_list or code == "en":
 			guess = code
 			break
@@ -109,6 +111,7 @@ def get_dict(fortype, name=None):
 			messages = get_messages_from_file(name)
 		elif fortype=="boot":
 			messages = get_messages_from_include_files()
+			messages += frappe.db.sql("select 'Print Format:', name from `tabPrint Format`")
 			messages += frappe.db.sql("select 'DocType:', name from tabDocType")
 			messages += frappe.db.sql("select 'Role:', name from tabRole")
 			messages += frappe.db.sql("select 'Module:', name from `tabModule Def`")
@@ -119,7 +122,7 @@ def get_dict(fortype, name=None):
 		message_dict.update(get_dict_from_hooks(fortype, name))
 
 		# remove untranslated
-		message_dict = {k:v for k, v in message_dict.iteritems() if k!=v}
+		message_dict = {k:v for k, v in iteritems(message_dict) if k!=v}
 
 		translation_assets[asset_key] = message_dict
 
@@ -179,7 +182,7 @@ def get_full_dict(lang):
 		return {}
 
 	# found in local, return!
-	if getattr(frappe.local, 'lang_full_dict', None) is not None:
+	if getattr(frappe.local, 'lang_full_dict', None) and frappe.local.lang_full_dict.get(lang, None):
 		return frappe.local.lang_full_dict
 
 	frappe.local.lang_full_dict = load_lang(lang)
@@ -234,7 +237,7 @@ def get_translation_dict_from_file(path, lang, app):
 			elif len(item)==2:
 				cleaned[item[0]] = strip(item[1])
 
-			else:
+			elif item:
 				raise Exception("Bad translation in '{app}' for language '{lang}': {values}".format(
 					app=app, lang=lang, values=repr(item).encode("utf-8")
 				))
@@ -356,7 +359,7 @@ def get_messages_from_workflow(doctype=None, app_name=None):
 	else:
 		fixtures = frappe.get_hooks('fixtures', app_name=app_name) or []
 		for fixture in fixtures:
-			if isinstance(fixture, basestring) and fixture == 'Worflow':
+			if isinstance(fixture, string_types) and fixture == 'Worflow':
 				workflows = frappe.get_all('Workflow')
 				break
 			elif isinstance(fixture, dict) and fixture.get('dt', fixture.get('doctype')) == 'Workflow':
@@ -391,7 +394,7 @@ def get_messages_from_custom_fields(app_name):
 	custom_fields = []
 
 	for fixture in fixtures:
-		if isinstance(fixture, basestring) and fixture == 'Custom Field':
+		if isinstance(fixture, string_types) and fixture == 'Custom Field':
 			custom_fields = frappe.get_all('Custom Field', fields=['name','label', 'description', 'fieldtype', 'options'])
 			break
 		elif isinstance(fixture, dict) and fixture.get('dt', fixture.get('doctype')) == 'Custom Field':
@@ -450,6 +453,7 @@ def get_server_messages(app):
 			if dontwalk in folders: folders.remove(dontwalk)
 
 		for f in files:
+			f = frappe.as_unicode(f)
 			if f.endswith(".py") or f.endswith(".html") or f.endswith(".js"):
 				messages.extend(get_messages_from_file(os.path.join(basepath, f)))
 
@@ -541,7 +545,7 @@ def read_csv_file(path):
 		# for japanese! #wtf
 		data = data.replace(chr(28), "").replace(chr(29), "")
 		data = reader([r.encode('utf-8') for r in data.splitlines()])
-		newdata = [[unicode(val, 'utf-8') for val in row] for row in data]
+		newdata = [[text_type(val, 'utf-8') for val in row] for row in data]
 	return newdata
 
 def write_csv_file(path, app_messages, lang_dict):
@@ -551,7 +555,7 @@ def write_csv_file(path, app_messages, lang_dict):
 	:param app_messages: Translatable strings for this app.
 	:param lang_dict: Full translated dict.
 	"""
-	app_messages.sort(lambda x,y: cmp(x[1], y[1]))
+	app_messages.sort(key = lambda x: x[1])
 	from csv import writer
 	with open(path, 'wb') as msgfile:
 		w = writer(msgfile, lineterminator='\n')
@@ -583,7 +587,7 @@ def get_untranslated(lang, untranslated_file, get_all=False):
 				.replace("\n", "|||"))
 
 	if get_all:
-		print str(len(messages)) + " messages"
+		print(str(len(messages)) + " messages")
 		with open(untranslated_file, "w") as f:
 			for m in messages:
 				# replace \n with ||| so that internal linebreaks don't get split
@@ -596,13 +600,13 @@ def get_untranslated(lang, untranslated_file, get_all=False):
 				untranslated.append(m[1])
 
 		if untranslated:
-			print str(len(untranslated)) + " missing translations of " + str(len(messages))
+			print(str(len(untranslated)) + " missing translations of " + str(len(messages)))
 			with open(untranslated_file, "w") as f:
 				for m in untranslated:
 					# replace \n with ||| so that internal linebreaks don't get split
 					f.write((escape_newlines(m) + os.linesep).encode("utf-8"))
 		else:
-			print "all translated!"
+			print("all translated!")
 
 def update_translations(lang, untranslated_file, translated_file):
 	"""Update translations from a source and target file for a given language.
@@ -680,7 +684,7 @@ def deduplicate_messages(messages):
 	op = operator.itemgetter(1)
 	messages = sorted(messages, key=op)
 	for k, g in itertools.groupby(messages, op):
-		ret.append(g.next())
+		ret.append(next(g))
 	return ret
 
 def get_bench_dir():

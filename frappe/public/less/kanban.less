@@ -4,7 +4,7 @@
 	min-height: ~"calc(100vh - 252px)";
 	background-color: @light-bg;
 	display: flex;
-	overflow: scroll;
+	overflow: auto;
 
 	.kanban-column {
 		flex: 0 0 230px;
@@ -152,6 +152,11 @@
 			width: 16px;
 			height: 16px;
 		}
+	}
+
+	.kanban-empty-state {
+		width: 100%;
+		line-height: 400px;
 	}
 }
 

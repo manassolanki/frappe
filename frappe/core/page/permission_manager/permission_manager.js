@@ -21,6 +21,7 @@ frappe.pages['permission-manager'].refresh = function(wrapper) {
 frappe.PermissionEngine = Class.extend({
 	init: function(wrapper) {
 		this.wrapper = wrapper;
+		this.page = wrapper.page;
 		this.body = $(this.wrapper).find(".perm-engine");
 		this.make();
 		this.refresh();
@@ -55,6 +56,10 @@ frappe.PermissionEngine = Class.extend({
 				.change(function() {
 					me.refresh();
 				});
+
+		this.page.add_inner_button(__('Set User Permissions'), () => {
+			return frappe.set_route('List', 'User Permission');
+		});
 		this.set_from_route();
 	},
 	set_from_route: function() {
@@ -133,11 +138,11 @@ frappe.PermissionEngine = Class.extend({
 	refresh: function() {
 		var me = this;
 		if(!me.doctype_select) {
-			this.body.html("<p class='text-muted'>" + __("Loading") + "...</div>");
+			this.body.html("<p class='text-muted'>" + __("Loading") + "...</p>");
 			return;
 		}
 		if(!me.get_doctype() && !me.get_role()) {
-			this.body.html("<p class='text-muted'>"+__("Select Document Type or Role to start.")+"</div>");
+			this.body.html("<p class='text-muted'>"+__("Select Document Type or Role to start.")+"</p>");
 			return;
 		}
 		// get permissions
@@ -150,7 +155,9 @@ frappe.PermissionEngine = Class.extend({
 				role: me.get_role()
 			},
 			callback: function(r) {
-				me.render(r.message);
+				frappe.model.with_doc('DocType', me.get_doctype(), () => {
+					me.render(r.message);
+				});
 			}
 		});
 	},
@@ -204,7 +211,10 @@ frappe.PermissionEngine = Class.extend({
 			var perm_cell = me.add_cell(row, d, "permissions").css("padding-top", 0);
 			var perm_container = $("<div class='row'></div>").appendTo(perm_cell);
 
-			$.each(me.rights, function(i, r) {
+			const { is_submittable } = frappe.model.get_doc('DocType', me.get_doctype());
+
+			me.rights.forEach(r => {
+				if (!is_submittable && ['submit', 'cancel', 'amend'].includes(r)) return;
 				me.add_check(perm_container, d, r);
 			});
 
@@ -247,10 +257,13 @@ frappe.PermissionEngine = Class.extend({
 
 	setup_user_permissions: function(d, role_cell) {
 		var me = this;
-		d.help = frappe.render('<ul class="user-permission-help small hidden" style="margin-left: -10px;">\
-				<li style="margin-top: 7px;"><a class="show-user-permission-doctypes grey">{%= __("Select Document Types") %}</a></li>\
-				<li style="margin-top: 3px;"><a class="show-user-permissions grey">{%= __("Show User Permissions") %}</a></li>\
-			</ul>', {});
+		d.help = `<ul class="user-permission-help small hidden"
+				style="margin-left: -10px;">
+				<li style="margin-top: 7px;"><a class="show-user-permission-doctypes">
+					${__("Select Document Types")}</a></li>
+				<li style="margin-top: 3px;"><a class="show-user-permissions">
+					${__("Show User Permissions")}</a></li>
+			</ul>`;
 
 		var checkbox = this.add_check(role_cell, d, "apply_user_permissions")
 			.removeClass("col-md-4")
@@ -298,7 +311,7 @@ frappe.PermissionEngine = Class.extend({
 						r.message = $.map(r.message, function(p) {
 							return $.format('<a href="#Form/User/{0}">{1}</a>', [p, p]);
 						})
-						msgprint(__("Users with role {0}:", [__(role)])
+						frappe.msgprint(__("Users with role {0}:", [__(role)])
 							+ "<br>" + r.message.join("<br>"));
 					}
 				})
@@ -324,7 +337,7 @@ frappe.PermissionEngine = Class.extend({
 					},
 					callback: function(r) {
 						if(r.exc) {
-							msgprint(__("Did not remove"));
+							frappe.msgprint(__("Did not remove"));
 						} else {
 							me.refresh();
 						}
@@ -336,8 +349,8 @@ frappe.PermissionEngine = Class.extend({
 		var me = this;
 
 		this.body.on("click", ".show-user-permissions", function() {
-			frappe.route_options = { doctype: me.get_doctype() || "" };
-			frappe.set_route("user-permissions");
+			frappe.route_options = { allow: me.get_doctype() || "" };
+			frappe.set_route('List', 'User Permission');
 		});
 
 		this.body.on("click", "input[type='checkbox']", function() {
@@ -380,8 +393,8 @@ frappe.PermissionEngine = Class.extend({
 							options:me.options.roles, reqd:1,fieldname:"role"},
 						{fieldtype:"Select", label:__("Permission Level"),
 							options:[0,1,2,3,4,5,6,7,8,9], reqd:1, fieldname: "permlevel",
-							description: __("Level 0 is for document level permissions, higher levels for field level permissions.")},
-						{fieldtype:"Button", label:__("Add"),fieldname:"add"},
+							description: __("Level 0 is for document level permissions, \
+								higher levels for field level permissions.")}
 					]
 				});
 				if(me.get_doctype()) {
@@ -393,7 +406,7 @@ frappe.PermissionEngine = Class.extend({
 					d.get_input("role").prop("disabled", true);
 				}
 				d.set_value("permlevel", "0");
-				d.get_input("add").click(function() {
+				d.set_primary_action(__('Add'), function() {
 					var args = d.get_values();
 					if(!args) {
 						return;
@@ -405,7 +418,7 @@ frappe.PermissionEngine = Class.extend({
 						args: args,
 						callback: function(r) {
 							if(r.exc) {
-								msgprint(__("Did not add"));
+								frappe.msgprint(__("Did not add"));
 							} else {
 								me.refresh();
 							}
@@ -418,6 +431,7 @@ frappe.PermissionEngine = Class.extend({
 	},
 
 	show_user_permission_doctypes: function(d) {
+		var me = this;
 		if (!d.dialog) {
 			var fields = [];
 			for (var i=0, l=d.linked_doctypes.length; i<l; i++) {
@@ -477,9 +491,9 @@ frappe.PermissionEngine = Class.extend({
 					},
 					callback: function(r) {
 						if(r.exc) {
-							msgprint(__("Did not set"));
+							frappe.msgprint(__("Did not set"));
 						} else {
-							var msg = msgprint(__("Saved!"));
+							var msg = frappe.msgprint(__("Saved!"));
 							setTimeout(function() { msg.hide(); }, 3000);
 							d.user_permission_doctypes = user_permission_doctypes;
 							dialog.hide();

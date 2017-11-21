@@ -11,10 +11,11 @@ from frappe.utils.file_manager import remove_all
 from frappe.utils.password import delete_all_passwords_for
 from frappe import _
 from frappe.model.naming import revert_series_if_last
-from frappe.utils.global_search import delete_for_document 
+from frappe.utils.global_search import delete_for_document
+from six import string_types
 
 def delete_doc(doctype=None, name=None, force=0, ignore_doctypes=None, for_reload=False,
-	ignore_permissions=False, flags=None, ignore_on_trash=False):
+	ignore_permissions=False, flags=None, ignore_on_trash=False, ignore_missing=True):
 	"""
 		Deletes a doc(dt, dn) and validates if it is not submitted and not linked in a live record
 	"""
@@ -26,14 +27,17 @@ def delete_doc(doctype=None, name=None, force=0, ignore_doctypes=None, for_reloa
 		name = frappe.form_dict.get('dn')
 
 	names = name
-	if isinstance(name, basestring):
+	if isinstance(name, string_types):
 		names = [name]
 
 	for name in names or []:
 
 		# already deleted..?
 		if not frappe.db.exists(doctype, name):
-			return
+			if not ignore_missing:
+				raise frappe.DoesNotExistError
+			else:
+				return False
 
 		# delete passwords
 		delete_all_passwords_for(doctype, name)
@@ -59,6 +63,7 @@ def delete_doc(doctype=None, name=None, force=0, ignore_doctypes=None, for_reloa
 				frappe.db.sql("delete from `tabCustom Script` where dt = %s", name)
 				frappe.db.sql("delete from `tabProperty Setter` where doc_type = %s", name)
 				frappe.db.sql("delete from `tabReport` where ref_doctype=%s", name)
+				frappe.db.sql("delete from `tabCustom DocPerm` where parent=%s", name)
 
 			delete_from_table(doctype, name, ignore_doctypes, None)
 
@@ -71,6 +76,7 @@ def delete_doc(doctype=None, name=None, force=0, ignore_doctypes=None, for_reloa
 
 				if not ignore_on_trash:
 					doc.run_method("on_trash")
+					doc.flags.in_delete = True
 					doc.run_method('on_change')
 
 				frappe.enqueue('frappe.model.delete_doc.delete_dynamic_links', doctype=doc.doctype, name=doc.name,
@@ -156,12 +162,17 @@ def update_flags(doc, flags=None, ignore_permissions=False):
 
 def check_permission_and_not_submitted(doc):
 	# permission
-	if not doc.flags.ignore_permissions and frappe.session.user!="Administrator" and (not doc.has_permission("delete") or (doc.doctype=="DocType" and not doc.custom)):
-		frappe.msgprint(_("User not allowed to delete {0}: {1}").format(doc.doctype, doc.name), raise_exception=True)
+	if (not doc.flags.ignore_permissions
+		and frappe.session.user!="Administrator"
+		and (
+			not doc.has_permission("delete")
+			or (doc.doctype=="DocType" and not doc.custom))):
+		frappe.msgprint(_("User not allowed to delete {0}: {1}")
+			.format(doc.doctype, doc.name), raise_exception=frappe.PermissionError)
 
 	# check if submitted
 	if doc.docstatus == 1:
-		frappe.msgprint(_("{0} {1}: Submitted Record cannot be deleted.").format(doc.doctype, doc.name),
+		frappe.msgprint(_("{0} {1}: Submitted Record cannot be deleted.").format(_(doc.doctype), doc.name),
 			raise_exception=True)
 
 def check_if_doc_is_linked(doc, method="Delete"):
@@ -176,13 +187,18 @@ def check_if_doc_is_linked(doc, method="Delete"):
 		if not issingle:
 			for item in frappe.db.get_values(link_dt, {link_field:doc.name},
 				["name", "parent", "parenttype", "docstatus"], as_dict=True):
+				linked_doctype = item.parenttype if item.parent else link_dt
+				if linked_doctype in ("Communication", "ToDo", "DocShare", "Email Unsubscribe", 'File', 'Version'):
+					# don't check for communication and todo!
+					continue
+
 				if item and ((item.parent or item.name) != doc.name) \
 						and ((method=="Delete" and item.docstatus<2) or (method=="Cancel" and item.docstatus==1)):
 					# raise exception only if
 					# linked to an non-cancelled doc when deleting
 					# or linked to a submitted doc when cancelling
 					frappe.throw(_('Cannot delete or cancel because {0} <a href="#Form/{0}/{1}">{1}</a> is linked with {2} <a href="#Form/{2}/{3}">{3}</a>')
-						.format(doc.doctype, doc.name, item.parenttype if item.parent else link_dt,
+						.format(doc.doctype, doc.name, linked_doctype,
 						item.parent or item.name), frappe.LinkExistsError)
 
 def check_if_doc_is_dynamically_linked(doc, method="Delete"):
@@ -228,6 +244,14 @@ def delete_dynamic_links(doctype, name):
 	frappe.db.sql('''delete from `tabEmail Unsubscribe`
 		where reference_doctype=%s and reference_name=%s''', (doctype, name))
 
+	# delete shares
+	delete_doc("DocShare", frappe.db.sql_list("""select name from `tabDocShare`
+		where share_doctype=%s and share_name=%s""", (doctype, name)),
+		ignore_on_trash=True, force=True)
+
+	# delete versions
+	frappe.db.sql('delete from tabVersion where ref_doctype=%s and docname=%s', (doctype, name))
+
 	# delete comments
 	frappe.db.sql("""delete from `tabCommunication`
 		where
@@ -251,14 +275,6 @@ def delete_dynamic_links(doctype, name):
 	frappe.db.sql("""update `tabCommunication`
 		set timeline_doctype=null, timeline_name=null
 		where timeline_doctype=%s and timeline_name=%s""", (doctype, name))
-
-	# delete shares
-	delete_doc("DocShare", frappe.db.sql_list("""select name from `tabDocShare`
-		where share_doctype=%s and share_name=%s""", (doctype, name)),
-		ignore_on_trash=True, force=True)
-
-	# delete versions
-	frappe.db.sql('delete from tabVersion where ref_doctype=%s and docname=%s', (doctype, name))
 
 def insert_feed(doc):
 	from frappe.utils import get_fullname

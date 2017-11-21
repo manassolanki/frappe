@@ -17,7 +17,9 @@ import frappe.defaults
 import frappe.translate
 from frappe.utils.change_log import get_change_log
 import redis
-from urllib import unquote
+from six.moves.urllib.parse import unquote
+from frappe.desk.notifications import clear_notifications
+from six import text_type
 
 @frappe.whitelist()
 def clear(user=None):
@@ -30,8 +32,8 @@ def clear(user=None):
 def clear_cache(user=None):
 	cache = frappe.cache()
 
-	groups = ("bootinfo", "user_recent", "user_roles", "user_doc", "lang",
-		"defaults", "user_permissions", "roles", "home_page", "linked_with",
+	groups = ("bootinfo", "user_recent", "roles", "user_doc", "lang",
+		"defaults", "user_permissions", "home_page", "linked_with",
 		"desktop_icons", 'portal_menu_items')
 
 	if user:
@@ -41,27 +43,35 @@ def clear_cache(user=None):
 		frappe.defaults.clear_cache(user)
 	else:
 		for name in groups:
-			cache.delete_key(name, user)
+			cache.delete_key(name)
 		clear_global_cache()
 		frappe.defaults.clear_cache()
+
+	clear_notifications(user)
 
 def clear_global_cache():
 	frappe.model.meta.clear_cache()
 	frappe.cache().delete_value(["app_hooks", "installed_apps",
 		"app_modules", "module_app", "notification_config", 'system_settings'
-		'scheduler_events', 'time_zone'])
+		'scheduler_events', 'time_zone', 'webhooks', 'active_domains', 'active_modules'])
 	frappe.setup_module_map()
 
 
-def clear_sessions(user=None, keep_current=False, device=None):
+def clear_sessions(user=None, keep_current=False, device=None, force=False):
 	'''Clear other sessions of the current user. Called at login / logout
 
 	:param user: user name (default: current user)
 	:param keep_current: keep current session (default: false)
 	:param device: delete sessions of this device (default: desktop)
+	:param force: triggered by the user (default false)
 	'''
+
+	reason = "Logged In From Another Session"
+	if force:
+		reason = "Force Logged out by the user"
+
 	for sid in get_sessions_to_clear(user, keep_current, device):
-		delete_session(sid, reason="Logged In From Another Session")
+		delete_session(sid, reason=reason)
 
 def get_sessions_to_clear(user=None, keep_current=False, device=None):
 	'''Returns sessions of the current user. Called at login / logout
@@ -159,6 +169,8 @@ def get():
 		# check only when clear cache is done, and don't cache this
 		if frappe.local.request:
 			bootinfo["change_log"] = get_change_log()
+			bootinfo["in_setup_wizard"] = not cint(frappe.db.get_single_value('System Settings', 'setup_complete'))
+			bootinfo["is_first_startup"] = cint(frappe.db.get_single_value('System Settings', 'is_first_startup'))
 
 	bootinfo["metadata_version"] = frappe.cache().get_value("metadata_version")
 	if not bootinfo["metadata_version"]:
@@ -283,6 +295,7 @@ class Session:
 		"""get session record, or return the standard Guest Record"""
 		from frappe.auth import clear_cookies
 		r = self.get_session_data()
+
 		if not r:
 			frappe.response["session_expired"] = 1
 			clear_cookies()
@@ -356,7 +369,7 @@ class Session:
 		now = frappe.utils.now()
 
 		self.data['data']['last_updated'] = now
-		self.data['data']['lang'] = unicode(frappe.lang)
+		self.data['data']['lang'] = text_type(frappe.lang)
 
 		# update session in db
 		last_updated = frappe.cache().hget("last_db_session_update", self.sid)

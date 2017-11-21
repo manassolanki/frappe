@@ -6,12 +6,13 @@ import frappe
 from frappe.desk.notifications import delete_notification_count_for
 from frappe.core.doctype.user.user import STANDARD_USERS
 from frappe.utils import cint
+from frappe import _
 
 @frappe.whitelist()
 def get_list(arg=None):
 	"""get list of messages"""
-	frappe.form_dict['limit_start'] = int(frappe.form_dict['limit_start'])
-	frappe.form_dict['limit_page_length'] = int(frappe.form_dict['limit_page_length'])
+	frappe.form_dict['start'] = int(frappe.form_dict['start'])
+	frappe.form_dict['page_length'] = int(frappe.form_dict['page_length'])
 	frappe.form_dict['user'] = frappe.session['user']
 
 	# set all messages as read
@@ -36,7 +37,7 @@ def get_list(arg=None):
 				and reference_doctype = 'User'
 				and reference_name = %(user)s
 			order by creation desc
-			limit %(limit_start)s, %(limit_page_length)s""".format(fields),
+			limit %(start)s, %(page_length)s""".format(fields),
 			frappe.local.form_dict, as_dict=1)
 
 	if frappe.form_dict.contact == frappe.session.user:
@@ -50,17 +51,18 @@ def get_list(arg=None):
 					or reference_name=%(user)s
 					or owner=reference_name)
 			order by creation desc
-			limit %(limit_start)s, %(limit_page_length)s""".format(fields),
+			limit %(start)s, %(page_length)s""".format(fields),
 			frappe.local.form_dict, as_dict=1)
 	else:
-		return frappe.db.sql("""select * from `tabCommunication`
+		return frappe.db.sql("""select {0} from `tabCommunication`
 			where
 				communication_type in ('Chat', 'Notification')
+				and comment_type != 'Bot'
 				and reference_doctype ='User'
 				and ((owner=%(contact)s and reference_name=%(user)s)
-					or (owner=%(contact)s and reference_name=%(contact)s))
+					or (owner=%(user)s and reference_name=%(contact)s))
 			order by creation desc
-			limit %(limit_start)s, %(limit_page_length)s""".format(fields),
+			limit %(start)s, %(page_length)s""".format(fields),
 			frappe.local.form_dict, as_dict=1)
 
 @frappe.whitelist()
@@ -131,11 +133,13 @@ def _notify(contact, txt, subject=None):
 		frappe.sendmail(\
 			recipients=contact,
 			sender= frappe.db.get_value("User", frappe.session.user, "email"),
-			subject=subject or "New Message from " + get_fullname(frappe.session.user),
-			message=frappe.get_template("templates/emails/new_message.html").render({
+			subject=subject or _("New Message from {0}").format(get_fullname(frappe.session.user)),
+			template="new_message",
+			args={
 				"from": get_fullname(frappe.session.user),
 				"message": txt,
 				"link": get_url()
-			}))
+			},
+			header=[_('New Message'), 'orange'])
 	except frappe.OutgoingEmailError:
 		pass

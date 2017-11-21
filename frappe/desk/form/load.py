@@ -7,7 +7,7 @@ import frappe.utils
 import frappe.share
 import frappe.defaults
 import frappe.desk.form.meta
-from frappe.model.utils.list_settings import get_list_settings
+from frappe.model.utils.user_settings import get_user_settings
 from frappe.permissions import get_doc_permissions
 from frappe import _
 
@@ -20,7 +20,7 @@ def getdoc(doctype, name, user=None):
 	"""
 
 	if not (doctype and name):
-		raise Exception, 'doctype and name required!'
+		raise Exception('doctype and name required!')
 
 	if not name:
 		name = doctype
@@ -33,7 +33,8 @@ def getdoc(doctype, name, user=None):
 		run_onload(doc)
 
 		if not doc.has_permission("read"):
-			raise frappe.PermissionError, ("read", doctype, name)
+			frappe.flags.error_message = _('Insufficient Permission for {0}').format(frappe.bold(doctype + ' ' + name))
+			raise frappe.PermissionError(("read", doctype, name))
 
 		doc.apply_fieldlevel_read_permissions()
 
@@ -69,8 +70,7 @@ def getdoctype(doctype, with_parent=False, cached_timestamp=None):
 	if not docs:
 		docs = get_meta_bundle(doctype)
 
-	frappe.response['user_permissions'] = get_user_permissions(docs)
-	frappe.response['list_settings'] = get_list_settings(parent_dt or doctype)
+	frappe.response['user_settings'] = get_user_settings(parent_dt or doctype)
 
 	if cached_timestamp and docs[0].modified==cached_timestamp:
 		return "use_cache"
@@ -94,22 +94,13 @@ def get_docinfo(doc=None, doctype=None, name=None):
 	frappe.response["docinfo"] = {
 		"attachments": get_attachments(doc.doctype, doc.name),
 		"communications": _get_communications(doc.doctype, doc.name),
+		'total_comments': len(json.loads(doc.get('_comments') or '[]')),
 		'versions': get_versions(doc),
 		"assignments": get_assignments(doc.doctype, doc.name),
 		"permissions": get_doc_permissions(doc),
 		"shared": frappe.share.get_users(doc.doctype, doc.name),
 		"rating": get_feedback_rating(doc.doctype, doc.name)
 	}
-
-def get_user_permissions(meta):
-	out = {}
-	all_user_permissions = frappe.defaults.get_user_permissions()
-
-	for m in meta:
-		for df in m.get_fields_to_check_permissions(all_user_permissions):
-			out[df.options] = list(set(all_user_permissions[df.options]))
-
-	return out
 
 def get_attachments(dt, dn):
 	return frappe.get_all("File", fields=["name", "file_name", "file_url", "is_private"],
@@ -152,7 +143,7 @@ def get_communication_data(doctype, name, start=0, limit=20, after=None, fields=
 			timeline_doctype, timeline_name,
 			reference_doctype, reference_name,
 			link_doctype, link_name,
-			rating, feedback, "Communication" as doctype'''
+			rating, "Communication" as doctype'''
 
 	conditions = '''communication_type in ("Communication", "Comment", "Feedback")
 			and (
@@ -171,6 +162,9 @@ def get_communication_data(doctype, name, start=0, limit=20, after=None, fields=
 	if after:
 		# find after a particular date
 		conditions+= ' and creation > {0}'.format(after)
+
+	if doctype=='User':
+		conditions+= ' and not (reference_doctype="User" and communication_type="Communication")'
 
 	communications = frappe.db.sql("""select {fields}
 		from tabCommunication

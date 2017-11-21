@@ -3,7 +3,7 @@ frappe.provide("frappe.utils")
 frappe.utils.Feedback = Class.extend({
 	resend_feedback_request: function(doc) {
 		/* resend the feedback request email */
-		args = {
+		var args = {
 			reference_name: doc.reference_name,
 			reference_doctype: doc.reference_doctype,
 			request: doc.feedback_request,
@@ -14,12 +14,12 @@ frappe.utils.Feedback = Class.extend({
 	manual_feedback_request: function(doc) {
 		var me = this;
 
-		args = {
+		var args = {
 			reference_doctype: doc.doctype,
 			reference_name: doc.name
 		}
 		if(frappe.boot.feedback_triggers[doc.doctype]) {
-			feedback_trigger = frappe.boot.feedback_triggers[doc.doctype]
+			var feedback_trigger = frappe.boot.feedback_triggers[doc.doctype]
 			$.extend(args, { trigger: feedback_trigger })
 			me.get_feedback_request_details(args, false)
 		} else{
@@ -34,7 +34,6 @@ frappe.utils.Feedback = Class.extend({
 			method: "frappe.core.doctype.feedback_trigger.feedback_trigger.get_feedback_request_details",
 			'args': args,
 			callback: function(r) {
-				console.log(r)
 				if(r.message) {
 					me.make_feedback_request_dialog(r.message, is_resend)
 				}
@@ -44,7 +43,7 @@ frappe.utils.Feedback = Class.extend({
 
 	make_feedback_request_dialog: function(args, is_resend) {
 		var me = this;
-		dialog = new frappe.ui.Dialog({
+		var dialog = new frappe.ui.Dialog({
 			title: __("{0} Feedback Request", [ is_resend? "Resend": "Send" ]),
 			fields: [
 				{
@@ -92,10 +91,10 @@ frappe.utils.Feedback = Class.extend({
 			'args': args,
 			freeze: true,
 			callback: function(r) {
-				docname = args.reference_name;
-				recipients = args.details.recipients || ""
-				frappe.msgprint(__("Feedback Request for {0} is sent to {1}",
-					[docname, recipients]));
+				if(r.message) {
+					frappe.msgprint(__("Feedback Request for {0} is sent to {1}",
+						[args.reference_name, args.details.recipients]));
+				}
 			}
 		});
 	}

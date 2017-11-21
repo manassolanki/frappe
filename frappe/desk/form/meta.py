@@ -14,6 +14,8 @@ from frappe.model.utils import render_include
 from frappe.build import scrub_html_template
 
 ######
+from six import iteritems, text_type
+
 
 def get_meta(doctype, cached=True):
 	if cached and not frappe.conf.developer_mode:
@@ -48,7 +50,8 @@ class FormMeta(Meta):
 		for k in ("__js", "__css", "__list_js", "__calendar_js", "__map_js",
 			"__linked_with", "__messages", "__print_formats", "__workflow_docs",
 			"__form_grid_templates", "__listview_template", "__tree_js",
-			"__dashboard", "__kanban_boards", "__kanban_column_fields", '__templates'):
+			"__dashboard", "__kanban_boards", "__kanban_column_fields", '__templates',
+			'__custom_js'):
 			d[k] = self.get(k)
 
 		for i, df in enumerate(d.get("fields")):
@@ -62,7 +65,11 @@ class FormMeta(Meta):
 		def _get_path(fname):
 			return os.path.join(path, scrub(fname))
 
+		system_country = frappe.get_system_settings("country")
+
 		self._add_code(_get_path(self.name + '.js'), '__js')
+		if system_country:
+			self._add_code(_get_path(os.path.join('regional', system_country + '.js')), '__js')
 		self._add_code(_get_path(self.name + '.css'), "__css")
 		self._add_code(_get_path(self.name + '_list.js'), '__list_js')
 		self._add_code(_get_path(self.name + '_calendar.js'), '__calendar_js')
@@ -75,6 +82,7 @@ class FormMeta(Meta):
 		self.add_code_via_hook("doctype_js", "__js")
 		self.add_code_via_hook("doctype_list_js", "__list_js")
 		self.add_code_via_hook("doctype_tree_js", "__tree_js")
+		self.add_code_via_hook("doctype_calendar_js", "__calendar_js")
 		self.add_custom_script()
 		self.add_html_templates(path)
 
@@ -91,7 +99,7 @@ class FormMeta(Meta):
 		for fname in os.listdir(path):
 			if fname.endswith(".html"):
 				with open(os.path.join(path, fname), 'r') as f:
-					templates[fname.split('.')[0]] = scrub_html_template(unicode(f.read(), "utf-8"))
+					templates[fname.split('.')[0]] = scrub_html_template(text_type(f.read(), "utf-8"))
 
 		self.set("__templates", templates or None)
 
@@ -105,7 +113,7 @@ class FormMeta(Meta):
 		custom = frappe.db.get_value("Custom Script", {"dt": self.name,
 			"script_type": "Client"}, "script") or ""
 
-		self.set("__js", (self.get('__js') or '') + "\n\n/* Appending Custom Script */\n\n" + custom)
+		self.set("__custom_js", custom)
 
 	def add_search_fields(self):
 		"""add search fields found in the doctypes indicated by link fields' options"""
@@ -152,7 +160,7 @@ class FormMeta(Meta):
 			app = module.__name__.split(".")[0]
 			templates = {}
 			if hasattr(module, "form_grid_templates"):
-				for key, path in module.form_grid_templates.iteritems():
+				for key, path in iteritems(module.form_grid_templates):
 					templates[key] = get_html_format(frappe.get_app_path(app, path))
 
 				self.set("__form_grid_templates", templates)
@@ -175,12 +183,12 @@ class FormMeta(Meta):
 		self.load_kanban_column_fields()
 
 	def load_kanban_boards(self):
-		kanban_boards = frappe.get_all(
-			'Kanban Board', filters={'reference_doctype': self.name})
+		kanban_boards = frappe.get_list(
+			'Kanban Board', fields=['name', 'filters', 'reference_doctype', 'private'], filters={'reference_doctype': self.name})
 		self.set("__kanban_boards", kanban_boards, as_value=True)
 
 	def load_kanban_column_fields(self):
-		values = frappe.get_all(
+		values = frappe.get_list(
 			'Kanban Board', fields=['field_name'],
 			filters={'reference_doctype': self.name})
 

@@ -8,8 +8,7 @@ import frappe.handler
 import frappe.client
 from frappe.utils.response import build_response
 from frappe import _
-from urlparse import urlparse
-from urllib import urlencode
+from six.moves.urllib.parse import urlparse, urlencode
 
 def handle():
 	"""
@@ -96,7 +95,7 @@ def handle():
 
 				if frappe.local.request.method=="DELETE":
 					# Not checking permissions here because it's checked in delete_doc
-					frappe.delete_doc(doctype, name)
+					frappe.delete_doc(doctype, name, ignore_missing=False)
 					frappe.local.response.http_status_code = 202
 					frappe.local.response.message = "ok"
 					frappe.db.commit()
@@ -133,7 +132,7 @@ def validate_oauth():
 	form_dict = frappe.local.form_dict
 	authorization_header = frappe.get_request_header("Authorization").split(" ") if frappe.get_request_header("Authorization") else None
 	if authorization_header and authorization_header[0].lower() == "bearer":
-		from frappe.integration_broker.oauth2 import get_oauth_server
+		from frappe.integrations.oauth2 import get_oauth_server
 		token = authorization_header[1]
 		r = frappe.request
 		parsed_url = urlparse(r.url)

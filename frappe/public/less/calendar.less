@@ -27,7 +27,7 @@ th.fc-widget-header {
 
 .fc-unthemed .fc-today {
 	background-color: #FFF !important;
-	
+
 	.fc-day-number {
 		background-color: @brand-primary;
 		min-width: 20px;
@@ -90,8 +90,39 @@ th.fc-day-header {
 }
 
 .fc-day-grid-event {
-	background-color: rgba(94, 100, 255, 0.2) !important;
 	border: none !important;
 	margin: 5px 4px 0 !important;
 	padding: 1px 5px !important;
+}
+
+.fc-bg-color(@color) {
+	@light: ~"@{color}-light";
+	@extra-light: ~"@{color}-extra-light";
+	@dark: ~"@{color}-dark";
+
+	background-color: @@extra-light !important;
+	color: @@dark !important;
+
+	&.fc-start {
+		border-left: 3px solid @@light !important;
+	}
+}
+
+.fc-bg-orange {
+	.fc-bg-color(orange);
+}
+.fc-bg-red {
+	.fc-bg-color(red);
+}
+.fc-bg-skyblue {
+	.fc-bg-color(skyblue);
+}
+.fc-bg-green {
+	.fc-bg-color(green);
+}
+.fc-bg-blue {
+	.fc-bg-color(blue);
+}
+.fc-bg-yellow {
+	.fc-bg-color(yellow);
 }

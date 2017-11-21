@@ -12,21 +12,27 @@ frappe.pages['activity'].on_page_load = function(wrapper) {
 	});
 
 	me.page = wrapper.page;
-
 	me.page.set_title(__("Activity"));
 
 	frappe.model.with_doctype("Communication", function() {
-		me.page.list = new frappe.ui.Listing({
+		me.page.list = new frappe.ui.BaseList({
 			hide_refresh: true,
 			page: me.page,
 			method: 'frappe.desk.page.activity.activity.get_feed',
 			parent: $("<div></div>").appendTo(me.page.main),
-			render_row: function(row, data) {
-				new frappe.activity.Feed(row, data);
+			render_view: function (values) {
+				var me = this;
+				wrapper = me.page.main.find(".result-list").get(0)
+				values.map(function (value) {
+					var row = $('<div class="list-row">')
+						.data("data", value)
+						.appendTo($(wrapper)).get(0);
+					new frappe.activity.Feed(row, value);
+				});
 			},
 			show_filters: true,
 			doctype: "Communication",
- 			get_args: function() {
+			get_args: function() {
 				if (frappe.route_options && frappe.route_options.show_likes) {
 					delete frappe.route_options.show_likes;
 					return {
@@ -74,7 +80,7 @@ frappe.pages['activity'].on_page_load = function(wrapper) {
 
 	this.page.add_menu_item(__('Authentication Log'), function() {
 		frappe.route_options = {
-			"user": user
+			"user": frappe.session.user
 		}
 
 		frappe.set_route('Report', "Authentication Log");
@@ -141,17 +147,18 @@ frappe.activity.Feed = Class.extend({
 		data.feed_type = data.comment_type || data.communication_medium;
 	},
 	add_date_separator: function(row, data) {
-		var date = dateutil.str_to_obj(data.creation);
+		var date = frappe.datetime.str_to_obj(data.creation);
 		var last = frappe.activity.last_feed_date;
 
-		if((last && dateutil.obj_to_str(last) != dateutil.obj_to_str(date)) || (!last)) {
-			var diff = dateutil.get_day_diff(dateutil.get_today(), dateutil.obj_to_str(date));
+		if((last && frappe.datetime.obj_to_str(last) != frappe.datetime.obj_to_str(date)) || (!last)) {
+			var diff = frappe.datetime.get_day_diff(frappe.datetime.get_today(), frappe.datetime.obj_to_str(date));
+			var pdate;
 			if(diff < 1) {
 				pdate = 'Today';
 			} else if(diff < 2) {
 				pdate = 'Yesterday';
 			} else {
-				pdate = dateutil.global_date_format(date);
+				pdate = frappe.datetime.global_date_format(date);
 			}
 			data.date_sep = pdate;
 			data.date_class = pdate=='Today' ? "date-indicator blue" : "date-indicator";
@@ -173,30 +180,14 @@ frappe.activity.render_heatmap = function(page) {
 		method: "frappe.desk.page.activity.activity.get_heatmap_data",
 		callback: function(r) {
 			if(r.message) {
-				var legend = [];
-				var max = Math.max.apply(this, $.map(r.message, function(v) { return v }));
-				var legend = [cint(max/5), cint(max*2/5), cint(max*3/5), cint(max*4/5)];
-				heatmap = new CalHeatMap();
-				heatmap.init({
-					itemSelector: ".heatmap",
-					domain: "month",
-					subDomain: "day",
-					start: moment().subtract(1, 'year').add(1, 'month').toDate(),
-					cellSize: 9,
-					cellPadding: 2,
-					domainGutter: 2,
-					range: 12,
-					domainLabelFormat: function(date) {
-						return moment(date).format("MMM").toUpperCase();
-					},
-					displayLegend: false,
-					legend: legend,
-					tooltip: true,
-					subDomainTitleFormat: {
-						empty: "{date}",
-						filled: "{count} actions on {date}"
-					},
-					subDomainDateFormat: "%d-%b"
+				var heatmap = new Chart({
+					parent: ".heatmap",
+					type: 'heatmap',
+					height: 100,
+					start: new Date(moment().subtract(1, 'year').toDate()),
+					count_label: "actions",
+					discrete_domains: 0,
+					data: {}
 				});
 
 				heatmap.update(r.message);

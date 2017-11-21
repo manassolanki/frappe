@@ -4,7 +4,7 @@
 from __future__ import unicode_literals
 import frappe
 from frappe import _
-from frappe.boot import get_allowed_pages
+from frappe.boot import get_allowed_pages, get_allowed_reports
 from frappe.desk.doctype.desktop_icon.desktop_icon import set_hidden, clear_desktop_icons_cache
 
 @frappe.whitelist()
@@ -55,6 +55,27 @@ def build_config_from_file(module):
 		except ImportError:
 			pass
 
+	return filter_by_restrict_to_domain(data)
+
+def filter_by_restrict_to_domain(data):
+	""" filter Pages and DocType depending on the Active Module(s) """
+	mapper = {
+		"page": "Page",
+		"doctype": "DocType"
+	}
+	active_domains = frappe.get_active_domains()
+
+	for d in data:
+		_items = []
+		for item in d.get("items", []):
+			doctype = mapper.get(item.get("type"))
+
+			doctype_domain = frappe.db.get_value(doctype, item.get("name"), "restrict_to_domain") or ''
+			if not doctype_domain or (doctype_domain in active_domains):
+				_items.append(item)
+
+		d.update({ "items": _items })
+
 	return data
 
 def build_standard_config(module, doctype_info):
@@ -95,11 +116,16 @@ def add_custom_doctypes(data, doctype_info):
 
 def get_doctype_info(module):
 	"""Returns list of non child DocTypes for given module."""
-	doctype_info = frappe.db.sql("""select "doctype" as type, name, description,
-		ifnull(document_type, "") as document_type, custom as custom,
-		issingle as issingle
-		from `tabDocType` where module=%s and istable=0
-		order by custom asc, document_type desc, name asc""", module, as_dict=True)
+	active_domains = frappe.get_active_domains()
+
+	doctype_info = frappe.get_all("DocType", filters={
+		"module": module,
+		"istable": 0
+	}, or_filters={
+		"ifnull(restrict_to_domain, '')": "",
+		"restrict_to_domain": ("in", active_domains)
+	}, fields=["'doctype' as type", "name", "description", "ifnull(document_type, '') as document_type",
+		"custom", "issingle"], order_by="custom asc, document_type desc, name asc")
 
 	for d in doctype_info:
 		d.description = _(d.description or "")
@@ -126,6 +152,7 @@ def apply_permissions(data):
 	user.build_permissions()
 
 	allowed_pages = get_allowed_pages()
+	allowed_reports = get_allowed_reports()
 
 	new_data = []
 	for section in data:
@@ -139,7 +166,7 @@ def apply_permissions(data):
 
 			if ((item.type=="doctype" and item.name in user.can_read)
 				or (item.type=="page" and item.name in allowed_pages)
-				or (item.type=="report" and item.doctype in user.can_get_report)
+				or (item.type=="report" and item.name in allowed_reports)
 				or item.type=="help"):
 
 				new_items.append(item)
@@ -195,7 +222,7 @@ def get_last_modified(doctype):
 	def _get():
 		try:
 			last_modified = frappe.get_all(doctype, fields=["max(modified)"], as_list=True, limit_page_length=1)[0][0]
-		except Exception, e:
+		except Exception as e:
 			if e.args[0]==1146:
 				last_modified = None
 			else:

@@ -6,6 +6,7 @@ import frappe
 import frappe.utils
 import json
 from frappe import _
+from six import string_types
 
 class SignupDisabledError(frappe.PermissionError): pass
 
@@ -73,8 +74,8 @@ def get_oauth2_providers():
 		out['frappe'] = {
 			"flow_params": {
 				"name": "frappe",
-				"authorize_url": frappe_server_url + "/api/method/frappe.integration_broker.oauth2.authorize",
-				"access_token_url": frappe_server_url + "/api/method/frappe.integration_broker.oauth2.get_token",
+				"authorize_url": frappe_server_url + "/api/method/frappe.integrations.oauth2.authorize",
+				"access_token_url": frappe_server_url + "/api/method/frappe.integrations.oauth2.get_token",
 				"base_url": frappe_server_url
 			},
 
@@ -86,7 +87,7 @@ def get_oauth2_providers():
 			},
 
 			# relative to base_url
-			"api_endpoint": "/api/method/frappe.integration_broker.oauth2.openid_profile"
+			"api_endpoint": "/api/method/frappe.integrations.oauth2.openid_profile"
 		}
 
 	return out
@@ -211,10 +212,10 @@ def login_oauth_user(data=None, provider=None, state=None, email_id=None, key=No
 	# 	return
 
 	# json.loads data and state
-	if isinstance(data, basestring):
+	if isinstance(data, string_types):
 		data = json.loads(data)
 
-	if isinstance(state, basestring):
+	if isinstance(state, string_types):
 		state = json.loads(state)
 
 	if not (state and state["token"]):

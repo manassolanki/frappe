@@ -1,7 +1,7 @@
 # Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 
-from __future__ import unicode_literals
+from __future__ import unicode_literals, print_function
 
 import frappe, os, json
 from frappe.modules import get_module_path, scrub_dt_dn
@@ -33,12 +33,11 @@ def get_file_path(module, dt, dn):
 	return path
 
 def import_file_by_path(path, force=False, data_import=False, pre_process=None, ignore_version=None,
-		reset_permissions=False):
-	frappe.flags.in_import = True
+		reset_permissions=False, for_sync=False):
 	try:
 		docs = read_doc_from_file(path)
 	except IOError:
-		print path + " missing"
+		print (path + " missing")
 		return
 
 	if docs:
@@ -54,8 +53,10 @@ def import_file_by_path(path, force=False, data_import=False, pre_process=None, 
 
 			original_modified = doc.get("modified")
 
+			frappe.flags.in_import = True
 			import_doc(doc, force=force, data_import=data_import, pre_process=pre_process,
 				ignore_version=ignore_version, reset_permissions=reset_permissions)
+			frappe.flags.in_import = False
 
 			if original_modified:
 				# since there is a new timestamp on the file, update timestamp in
@@ -67,7 +68,6 @@ def import_file_by_path(path, force=False, data_import=False, pre_process=None, 
 						(doc['doctype'], '%s', '%s'),
 						(original_modified, doc['name']))
 
-	frappe.flags.in_import = False
 	return True
 
 def read_doc_from_file(path):
@@ -77,26 +77,28 @@ def read_doc_from_file(path):
 			try:
 				doc = json.loads(f.read())
 			except ValueError:
-				print "bad json: {0}".format(path)
+				print("bad json: {0}".format(path))
 				raise
 	else:
-		raise IOError, '%s missing' % path
+		raise IOError('%s missing' % path)
 
 	return doc
 
 ignore_values = {
 	"Report": ["disabled"],
-	"Print Format": ["disabled"]
+	"Print Format": ["disabled"],
+	"Email Alert": ["enabled"],
+	"Print Style": ["disabled"]
 }
 
-ignore_doctypes = ["Page Role"]
+ignore_doctypes = [""]
 
 def import_doc(docdict, force=False, data_import=False, pre_process=None,
 		ignore_version=None, reset_permissions=False):
-
 	frappe.flags.in_import = True
 	docdict["__islocal"] = 1
 	doc = frappe.get_doc(docdict)
+
 	doc.flags.ignore_version = ignore_version
 	if pre_process:
 		pre_process(doc)
@@ -126,5 +128,7 @@ def import_doc(docdict, force=False, data_import=False, pre_process=None,
 		doc.flags.ignore_validate = True
 		doc.flags.ignore_permissions = True
 		doc.flags.ignore_mandatory = True
+		
 	doc.insert()
+
 	frappe.flags.in_import = False

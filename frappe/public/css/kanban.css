@@ -2,7 +2,7 @@
   min-height: calc(100vh - 252px);
   background-color: #fafbfc;
   display: flex;
-  overflow: scroll;
+  overflow: auto;
 }
 .kanban .kanban-column {
   flex: 0 0 230px;
@@ -124,6 +124,10 @@
 .kanban .kanban-card-meta .avatar {
   width: 16px;
   height: 16px;
+}
+.kanban .kanban-empty-state {
+  width: 100%;
+  line-height: 400px;
 }
 body[data-route*="Kanban"] .modal .add-assignment:hover i {
   color: #36414C !important;

@@ -117,6 +117,7 @@ CREATE TABLE `tabDocType` (
   `editable_grid` int(1) NOT NULL DEFAULT 1,
   `track_changes` int(1) NOT NULL DEFAULT 0,
   `module` varchar(255) DEFAULT NULL,
+  `restrict_to_domain` varchar(255) DEFAULT NULL,
   `app` varchar(255) DEFAULT NULL,
   `autoname` varchar(255) DEFAULT NULL,
   `name_case` varchar(255) DEFAULT NULL,
@@ -141,7 +142,6 @@ CREATE TABLE `tabDocType` (
   `max_attachments` int(11) NOT NULL DEFAULT 0,
   `print_outline` varchar(255) DEFAULT NULL,
   `read_only_onload` int(1) NOT NULL DEFAULT 0,
-  `in_dialog` int(1) NOT NULL DEFAULT 0,
   `document_type` varchar(255) DEFAULT NULL,
   `icon` varchar(255) DEFAULT NULL,
   `tag_fields` varchar(255) DEFAULT NULL,
@@ -155,6 +155,10 @@ CREATE TABLE `tabDocType` (
   `custom` int(1) NOT NULL DEFAULT 0,
   `beta` int(1) NOT NULL DEFAULT 0,
   `image_view` int(1) NOT NULL DEFAULT 0,
+  `has_web_view` int(1) NOT NULL DEFAULT 0,
+  `allow_guest_to_view` int(1) NOT NULL DEFAULT 0,
+  `route` varchar(255) DEFAULT NULL,
+  `is_published_field` varchar(255) DEFAULT NULL,
   PRIMARY KEY (`name`),
   KEY `parent` (`parent`)
 ) ENGINE=InnoDB ROW_FORMAT=COMPRESSED CHARACTER SET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

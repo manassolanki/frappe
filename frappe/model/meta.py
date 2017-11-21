@@ -15,8 +15,9 @@ Example:
 
 '''
 
-from __future__ import unicode_literals
-import frappe, json
+from __future__ import unicode_literals, print_function
+from six.moves import range
+import frappe, json, os
 from frappe.utils import cstr, cint
 from frappe.model import default_fields, no_value_fields, optional_fields
 from frappe.model.document import Document
@@ -27,9 +28,15 @@ from frappe import _
 
 def get_meta(doctype, cached=True):
 	if cached:
-		return frappe.cache().hget("meta", doctype, lambda: Meta(doctype))
+		if not frappe.local.meta_cache.get(doctype):
+			frappe.local.meta_cache[doctype] = frappe.cache().hget("meta", doctype,
+				lambda: Meta(doctype))
+		return frappe.local.meta_cache[doctype]
 	else:
-		return Meta(doctype)
+		return load_meta(doctype)
+
+def load_meta(doctype):
+	return Meta(doctype)
 
 def get_table_columns(doctype):
 	return frappe.cache().hget("table_columns", doctype,
@@ -86,6 +93,15 @@ class Meta(Document):
 		return self.get("fields", {"fieldtype": "Select", "options":["not in",
 			["[Select]", "Loading..."]]})
 
+	def get_image_fields(self):
+		return self.get("fields", {"fieldtype": "Attach Image"})
+
+	def get_set_only_once_fields(self):
+		'''Return fields with `set_only_once` set'''
+		if not hasattr(self, "_set_only_once_fields"):
+			self._set_only_once_fields = self.get("fields", {"set_only_once": 1})
+		return self._set_only_once_fields
+
 	def get_table_fields(self):
 		if not hasattr(self, "_table_fields"):
 			if self.name!="DocType":
@@ -97,7 +113,7 @@ class Meta(Document):
 
 	def get_global_search_fields(self):
 		'''Returns list of fields with `in_global_search` set and `name` if set'''
-		fields = self.get("fields", {"in_global_search": 1 })
+		fields = self.get("fields", {"in_global_search": 1, "fieldtype": ["not in", no_value_fields]})
 		if getattr(self, 'show_name_in_global_search', None):
 			fields.append(frappe._dict(fieldtype='Data', fieldname='name', label='Name'))
 
@@ -203,7 +219,15 @@ class Meta(Document):
 		return [d for d in self.fields if d.get('is_custom_field')]
 
 	def get_title_field(self):
-		return self.title_field or "name"
+		'''Return the title field of this doctype,
+		explict via `title_field`, or `title` or `name`'''
+		title_field = getattr(self, 'title_field', None)
+		if not title_field and self.has_field('title'):
+			title_field = 'title'
+		if not title_field:
+			title_field = 'name'
+
+		return title_field
 
 	def process(self):
 		# don't process for special doctypes
@@ -222,7 +246,7 @@ class Meta(Document):
 			self.extend("fields", frappe.db.sql("""SELECT * FROM `tabCustom Field`
 				WHERE dt = %s AND docstatus < 2""", (self.name,), as_dict=1,
 				update={"is_custom_field": 1}))
-		except Exception, e:
+		except Exception as e:
 			if e.args[0]==1146:
 				return
 			else:
@@ -273,7 +297,7 @@ class Meta(Document):
 			newlist += [df for df in self.get('fields') if not df.get('is_custom_field')]
 
 			newlist_fieldnames = [df.fieldname for df in newlist]
-			for i in xrange(2):
+			for i in range(2):
 				for df in list(custom_fields):
 					if df.insert_after in newlist_fieldnames:
 						cf = custom_fields.pop(custom_fields.index(df))
@@ -296,7 +320,7 @@ class Meta(Document):
 
 	def set_custom_permissions(self):
 		'''Reset `permissions` with Custom DocPerm if exists'''
-		if frappe.flags.in_patch or frappe.flags.in_import:
+		if frappe.flags.in_patch or frappe.flags.in_import or frappe.flags.in_install:
 			return
 
 		if not self.istable and self.name not in ('DocType', 'DocField', 'DocPerm',
@@ -352,6 +376,20 @@ class Meta(Document):
 
 		return data
 
+	def get_row_template(self):
+		return self.get_web_template(suffix='_row')
+
+	def get_web_template(self, suffix=''):
+		'''Returns the relative path of the row template for this doctype'''
+		module_name = frappe.scrub(self.module)
+		doctype = frappe.scrub(self.name)
+		template_path = frappe.get_module_path(module_name, 'doctype',
+			doctype, 'templates', doctype + suffix + '.html')
+		if os.path.exists(template_path):
+			return '{module_name}/doctype/{doctype_name}/templates/{doctype_name}{suffix}.html'.format(
+				module_name = module_name, doctype_name = doctype, suffix=suffix)
+		return None
+
 doctype_table_fields = [
 	frappe._dict({"fieldname": "fields", "options": "DocField"}),
 	frappe._dict({"fieldname": "permissions", "options": "DocPerm"})
@@ -363,7 +401,7 @@ def is_single(doctype):
 	try:
 		return frappe.db.get_value("DocType", doctype, "issingle")
 	except IndexError:
-		raise Exception, 'Cannot determine whether %s is single' % doctype
+		raise Exception('Cannot determine whether %s is single' % doctype)
 
 def get_parent_dt(dt):
 	parent_dt = frappe.db.sql("""select parent from tabDocField
@@ -419,22 +457,10 @@ def get_field_precision(df, doc=None, currency=None):
 		precision = cint(df.precision)
 
 	elif df.fieldtype == "Currency":
-		number_format = None
-		if not currency and doc:
-			currency = get_field_currency(df, doc)
-
-		if not currency:
-			# use default currency
-			currency = frappe.db.get_default("currency")
-
-		if currency:
-			number_format = frappe.db.get_value("Currency", currency, "number_format", cache=True)
-
-		if not number_format:
+		precision = cint(frappe.db.get_default("currency_precision"))
+		if not precision:
 			number_format = frappe.db.get_default("number_format") or "#,###.##"
-
-		decimal_str, comma_str, precision = get_number_format_info(number_format)
-
+			decimal_str, comma_str, precision = get_number_format_info(number_format)
 	else:
 		precision = cint(frappe.db.get_default("float_precision")) or 3
 
@@ -455,18 +481,22 @@ def get_default_df(fieldname):
 				fieldtype = "Data"
 			)
 
-def trim_tables():
+def trim_tables(doctype=None):
 	"""Use this to remove columns that don't exist in meta"""
 	ignore_fields = default_fields + optional_fields
 
-	for doctype in frappe.db.get_all("DocType", filters={"issingle": 0}):
+	filters={ "issingle": 0 }
+	if doctype:
+		filters["name"] = doctype
+
+	for doctype in frappe.db.get_all("DocType", filters=filters):
 		doctype = doctype.name
 		columns = frappe.db.get_table_columns(doctype)
 		fields = frappe.get_meta(doctype).get_fieldnames_with_value()
 		columns_to_remove = [f for f in list(set(columns) - set(fields)) if f not in ignore_fields
 			and not f.startswith("_")]
 		if columns_to_remove:
-			print doctype, "columns removed:", columns_to_remove
+			print(doctype, "columns removed:", columns_to_remove)
 			columns_to_remove = ", ".join(["drop `{0}`".format(c) for c in columns_to_remove])
 			query = """alter table `tab{doctype}` {columns}""".format(
 				doctype=doctype, columns=columns_to_remove)
@@ -474,6 +504,9 @@ def trim_tables():
 
 def clear_cache(doctype=None):
 	cache = frappe.cache()
+
+	if getattr(frappe.local, 'meta_cache') and (doctype in frappe.local.meta_cache):
+		del frappe.local.meta_cache[doctype]
 
 	for key in ('is_table', 'doctype_modules'):
 		cache.delete_value(key)

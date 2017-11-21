@@ -8,6 +8,8 @@ import frappe.model
 import frappe.utils
 import json, os
 
+from six import iteritems, string_types, integer_types
+
 '''
 Handle RESTful requests that are mapped to the `/api/resource` route.
 
@@ -38,7 +40,7 @@ def get(doctype, name=None, filters=None):
 	if filters and not name:
 		name = frappe.db.get_value(doctype, json.loads(filters))
 		if not name:
-			raise Exception, "No document found for given filters"
+			frappe.throw(_("No document found for given filters"))
 
 	doc = frappe.get_doc(doctype, name)
 	if not doc.has_permission("read"):
@@ -55,19 +57,28 @@ def get_value(doctype, fieldname, filters=None, as_dict=True, debug=False):
 	:param filters: dict or string for identifying the record'''
 
 	if not frappe.has_permission(doctype):
-		frappe.throw(_("Not permitted"), frappe.PermissionError)
+		frappe.throw(_("No permission for {0}".format(doctype)), frappe.PermissionError)
 
 	try:
 		filters = json.loads(filters)
-	except ValueError:
-		# name passed, not json
+
+		if isinstance(filters, (integer_types, float)):
+			filters = frappe.as_unicode(filters)
+
+	except (TypeError, ValueError):
+		# filters are not passesd, not json
 		pass
 
 	try:
 		fieldname = json.loads(fieldname)
-	except ValueError:
+	except (TypeError, ValueError):
 		# name passed, not json
 		pass
+
+	# check whether the used filters were really parseable and usable
+	# and did not just result in an empty string or dict
+	if not filters:
+		filters = None
 
 	return frappe.db.get_value(doctype, filters, fieldname, as_dict=as_dict, debug=debug)
 
@@ -85,7 +96,7 @@ def set_value(doctype, name, fieldname, value=None):
 
 	if not value:
 		values = fieldname
-		if isinstance(fieldname, basestring):
+		if isinstance(fieldname, string_types):
 			try:
 				values = json.loads(fieldname)
 			except ValueError:
@@ -111,7 +122,7 @@ def insert(doc=None):
 	'''Insert a document
 
 	:param doc: JSON or dict object to be inserted'''
-	if isinstance(doc, basestring):
+	if isinstance(doc, string_types):
 		doc = json.loads(doc)
 
 	if doc.get("parent") and doc.get("parenttype"):
@@ -129,7 +140,7 @@ def insert_many(docs=None):
 	'''Insert multiple documents
 
 	:param docs: JSON or list of dict objects to be inserted in one request'''
-	if isinstance(docs, basestring):
+	if isinstance(docs, string_types):
 		docs = json.loads(docs)
 
 	out = []
@@ -155,7 +166,7 @@ def save(doc):
 	'''Update (save) an existing document
 
 	:param doc: JSON or dict object with the properties of the document to be updated'''
-	if isinstance(doc, basestring):
+	if isinstance(doc, string_types):
 		doc = json.loads(doc)
 
 	doc = frappe.get_doc(doc).save()
@@ -176,7 +187,7 @@ def submit(doc):
 	'''Submit a document
 
 	:param doc: JSON or dict object to be submitted remotely'''
-	if isinstance(doc, basestring):
+	if isinstance(doc, string_types):
 		doc = json.loads(doc)
 
 	doc = frappe.get_doc(doc)
@@ -201,7 +212,7 @@ def delete(doctype, name):
 
 	:param doctype: DocType of the document to be deleted
 	:param name: name of the document to be deleted'''
-	frappe.delete_doc(doctype, name)
+	frappe.delete_doc(doctype, name, ignore_missing=False)
 
 @frappe.whitelist()
 def set_default(key, value, parent=None):
@@ -214,7 +225,7 @@ def make_width_property_setter(doc):
 	'''Set width Property Setter
 
 	:param doc: Property Setter document with `width` property'''
-	if isinstance(doc, basestring):
+	if isinstance(doc, string_types):
 		doc = json.loads(doc)
 	if doc["doctype"]=="Property Setter" and doc["property"]=="width":
 		frappe.get_doc(doc).insert(ignore_permissions = True)
@@ -228,7 +239,7 @@ def bulk_update(docs):
 	failed_docs = []
 	for doc in docs:
 		try:
-			ddoc = {key: val for key, val in doc.iteritems() if key not in ['doctype', 'docname']}
+			ddoc = {key: val for key, val in iteritems(doc) if key not in ['doctype', 'docname']}
 			doctype = doc['doctype']
 			docname = doc['docname']
 			doc = frappe.get_doc(doctype, docname)
@@ -289,3 +300,8 @@ def get_js(items):
 		out.append(code)
 
 	return out
+
+@frappe.whitelist(allow_guest=True)
+def get_time_zone():
+	'''Returns default time zone'''
+	return {"time_zone": frappe.defaults.get_defaults().get("time_zone")}

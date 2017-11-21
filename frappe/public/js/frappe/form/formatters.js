@@ -9,7 +9,7 @@ frappe.form.link_formatters = {};
 
 frappe.form.formatters = {
 	_right: function(value, options) {
-		if(options && options.inline) {
+		if(options && (options.inline || options.only_value)) {
 			return value;
 		} else {
 			return "<div style='text-align: right'>" + value + "</div>";
@@ -52,14 +52,31 @@ frappe.form.formatters = {
 	},
 	Currency: function(value, docfield, options, doc) {
 		var currency = frappe.meta.get_field_currency(docfield, doc);
-		return frappe.form.formatters._right((value==null || value==="")
-			? "" : format_currency(value, currency, docfield.precision || null), options);
+		var precision = docfield.precision || cint(frappe.boot.sysdefaults.currency_precision) || 2;
+		if (precision > 2) {
+			let parts = cstr(value).split('.');
+			let decimals = parts.length > 1 ? parts[1] : '';
+			if (decimals.length < 3) {
+				// min precision 2
+				precision = 2;
+			} else if (decimals.length < precision) {
+				// or min decimals
+				precision = decimals.length;
+			}
+		}
+		value = (value==null || value==="") ?
+			"" : format_currency(value, currency, precision);
+		if (options && options.only_value) {
+			return value;
+		} else {
+			return frappe.form.formatters._right(value, options);
+		}
 	},
 	Check: function(value) {
 		if(value) {
 			return '<i class="octicon octicon-check" style="margin-right: 3px;"></i>';
 		} else {
-			return '<i class="fa fa-circle-o text-extra-muted" style="margin-right: 3px; margin-bottom: -2px;"></i>';
+			return '<i class="fa fa-square disabled-check"></i>';
 		}
 	},
 	Link: function(value, docfield, options, doc) {
@@ -69,12 +86,15 @@ frappe.form.formatters = {
 			value.replace(/^.(.*).$/, "$1");
 		}
 
-		if(options && options.for_print) {
+		if(options && (options.for_print || options.only_value)) {
 			return value;
 		}
 
 		if(frappe.form.link_formatters[doctype]) {
-			value = frappe.form.link_formatters[doctype](value, doc);
+			// don't apply formatters in case of composite (parent field of same type)
+			if (doc && doctype !== doc.doctype) {
+				value = frappe.form.link_formatters[doctype](value, doc);
+			}
 		}
 
 		if(!value) {
@@ -98,7 +118,7 @@ frappe.form.formatters = {
 	},
 	Date: function(value) {
 		if (value) {
-			value = dateutil.str_to_user(value);
+			value = frappe.datetime.str_to_user(value);
 			// handle invalid date
 			if (value==="Invalid date") {
 				value = null;
@@ -107,9 +127,19 @@ frappe.form.formatters = {
 
 		return value || "";
 	},
+	DateRange: function(value) {
+		if($.isArray(value)) {
+			return __("{0} to {1}", [
+				frappe.datetime.str_to_user(value[0]),
+				frappe.datetime.str_to_user(value[1])
+			]);
+		} else {
+			return value || "";
+		}
+	},
 	Datetime: function(value) {
 		if(value) {
-			var m = moment(dateutil.convert_to_user_tz(value));
+			var m = moment(frappe.datetime.convert_to_user_tz(value));
 			if(frappe.boot.sysdefaults.time_zone) {
 				m = m.tz(frappe.boot.sysdefaults.time_zone);
 			}
@@ -181,7 +211,7 @@ frappe.form.formatters = {
 		return "<pre>" + (value==null ? "" : $("<div>").text(value).html()) + "</pre>"
 	},
 	WorkflowState: function(value) {
-		workflow_state = frappe.get_doc("Workflow State", value);
+		var workflow_state = frappe.get_doc("Workflow State", value);
 		if(workflow_state) {
 			return repl("<span class='label label-%(style)s' \
 				data-workflow-state='%(value)s'\
@@ -216,7 +246,7 @@ frappe.format = function(value, df, options, doc) {
 		df._options = doc ? doc[df.options] : null;
 	}
 
-	formatter = df.formatter || frappe.form.get_formatter(fieldtype);
+	var formatter = df.formatter || frappe.form.get_formatter(fieldtype);
 
 	var formatted = formatter(value, df, options, doc);
 
@@ -230,7 +260,7 @@ frappe.get_format_helper = function(doc) {
 	var helper = {
 		get_formatted: function(fieldname) {
 			var df = frappe.meta.get_docfield(doc.doctype, fieldname);
-			if(!df) { console.log("fieldname not found: " + fieldname); };
+			if(!df) { console.log("fieldname not found: " + fieldname); }
 			return frappe.format(doc[fieldname], df, {inline:1}, doc);
 		}
 	};

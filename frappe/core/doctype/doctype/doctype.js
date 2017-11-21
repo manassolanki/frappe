@@ -13,9 +13,12 @@
 
 frappe.ui.form.on('DocType', {
 	refresh: function(frm) {
-		if(frm.doc.__islocal && (user !== "Administrator" || !frappe.boot.developer_mode)) {
-			frm.set_value("custom", 1);
+		if(frappe.session.user !== "Administrator" || !frappe.boot.developer_mode) {
+			if(frm.is_new()) {
+				frm.set_value("custom", 1);
+			}
 			frm.toggle_enable("custom", 0);
+			frm.toggle_enable("beta", 0);
 		}
 
 		if(!frappe.boot.developer_mode && !frm.doc.custom) {
@@ -23,7 +26,11 @@ frappe.ui.form.on('DocType', {
 			frm.set_read_only();
 		}
 
-		if(!frm.doc.__islocal) {
+		if(frm.is_new()) {
+			if (!(frm.doc.permissions && frm.doc.permissions.length)) {
+				frm.add_child('permissions', {role: 'System Manager'});
+			}
+		} else {
 			frm.toggle_enable("engine", 0);
 		}
 

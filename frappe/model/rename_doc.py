@@ -1,7 +1,7 @@
 # Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 
-from __future__ import unicode_literals
+from __future__ import unicode_literals, print_function
 import frappe
 from frappe import _
 from frappe.utils import cint
@@ -10,12 +10,19 @@ from frappe.model.dynamic_links import get_dynamic_link_map
 from frappe.utils.password import rename_password
 
 @frappe.whitelist()
-def rename_doc(doctype, old, new, force=False, merge=False, ignore_permissions=False):
+def rename_doc(doctype, old, new, force=False, merge=False, ignore_permissions=False, ignore_if_exists=False):
 	"""
 		Renames a doc(dt, old) to doc(dt, new) and
 		updates all linked fields of type "Link"
 	"""
 	if not frappe.db.exists(doctype, old):
+		return
+
+	if ignore_if_exists and frappe.db.exists(doctype, new):
+		return
+
+	if old==new:
+		frappe.msgprint(_('Please select a new name to rename'))
 		return
 
 	force = cint(force)
@@ -78,7 +85,7 @@ def update_attachments(doctype, old, new):
 		if old != "File Data" and doctype != "DocType":
 			frappe.db.sql("""update `tabFile` set attached_to_name=%s
 				where attached_to_name=%s and attached_to_doctype=%s""", (new, old, doctype))
-	except Exception, e:
+	except Exception as e:
 		if e.args[0]!=1054: # in patch?
 			raise
 
@@ -149,12 +156,18 @@ def update_child_docs(old, new, meta):
 def update_link_field_values(link_fields, old, new, doctype):
 	for field in link_fields:
 		if field['issingle']:
-			single_doc = frappe.get_doc(field['parent'])
-			if single_doc.get(field['fieldname'])==old:
-				single_doc.set(field['fieldname'], new)
-				# update single docs using ORM rather then query
-				# as single docs also sometimes sets defaults!
-				single_doc.save(ignore_permissions=True)
+			try:
+				single_doc = frappe.get_doc(field['parent'])
+				if single_doc.get(field['fieldname'])==old:
+					single_doc.set(field['fieldname'], new)
+					# update single docs using ORM rather then query
+					# as single docs also sometimes sets defaults!
+					single_doc.flags.ignore_mandatory = True
+					single_doc.save(ignore_permissions=True)
+			except ImportError:
+				# fails in patches where the doctype has been renamed
+				# or no longer exists
+				pass
 		else:
 			# because the table hasn't been renamed yet!
 			parent = field['parent'] if field['parent']!=new else old
@@ -361,12 +374,12 @@ def bulk_rename(doctype, rows=None, via_console = False):
 					frappe.db.commit()
 				else:
 					msg = _("Ignored: {0} to {1}").format(row[0], row[1])
-			except Exception, e:
+			except Exception as e:
 				msg = _("** Failed: {0} to {1}: {2}").format(row[0], row[1], repr(e))
 				frappe.db.rollback()
 
 			if via_console:
-				print msg
+				print(msg)
 			else:
 				rename_log.append(msg)
 

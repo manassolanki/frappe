@@ -31,6 +31,16 @@ def get_context(context):
 	ldap_settings = get_ldap_settings()
 	context["ldap_settings"] = ldap_settings
 
+	login_name_placeholder = [_("Email address")]
+
+	if frappe.utils.cint(frappe.get_system_settings("allow_login_using_mobile_number")):
+		login_name_placeholder.append(_("Mobile number"))
+
+	if frappe.utils.cint(frappe.get_system_settings("allow_login_using_user_name")):
+		login_name_placeholder.append(_("Username"))
+
+	context['login_name_placeholder'] = ' {0} '.format(_('or')).join(login_name_placeholder)
+
 	return context
 
 @frappe.whitelist(allow_guest=True)
@@ -43,7 +53,7 @@ def login_via_github(code, state):
 
 @frappe.whitelist(allow_guest=True)
 def login_via_facebook(code, state):
-	login_via_oauth2("facebook", code, state)
+	login_via_oauth2("facebook", code, state, decoder=json.loads)
 
 @frappe.whitelist(allow_guest=True)
 def login_via_frappe(code, state):
@@ -68,4 +78,3 @@ def login_via_token(login_token):
 	frappe.local.login_manager = LoginManager()
 
 	redirect_post_login(desk_user = frappe.db.get_value("User", frappe.session.user, "user_type")=="System User")
-

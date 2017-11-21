@@ -7,14 +7,34 @@ import frappe
 import json
 from frappe import _
 from frappe.model.document import Document
+from six import iteritems
 
 
 class KanbanBoard(Document):
 	def validate(self):
+		self.validate_column_name()
+	
+	def validate_column_name(self):
 		for column in self.columns:
 			if not column.column_name:
 				frappe.msgprint(frappe._("Column Name cannot be empty"), raise_exception=True)
 
+def get_permission_query_conditions(user):
+	if not user: user = frappe.session.user
+
+	if user == "Administrator":
+		return ""
+
+	return """(`tabKanban Board`.private=0 or `tabKanban Board`.owner="{user}")""".format(user=user)
+
+def has_permission(doc, ptype, user):
+	if doc.private == 0 or user == "Administrator":
+		return True
+
+	if user == doc.owner:
+		return True
+
+	return False
 
 @frappe.whitelist()
 def add_column(board_name, column_title):
@@ -72,7 +92,7 @@ def update_order(board_name, order):
 	order_dict = json.loads(order)
 
 	updated_cards = []
-	for col_name, cards in order_dict.iteritems():
+	for col_name, cards in iteritems(order_dict):
 		order_list = []
 		for card in cards:
 			column = frappe.get_value(
@@ -99,10 +119,13 @@ def update_order(board_name, order):
 def quick_kanban_board(doctype, board_name, field_name):
 	'''Create new KanbanBoard quickly with default options'''
 	doc = frappe.new_doc('Kanban Board')
-	options = frappe.get_value('DocField', dict(
-            parent=doctype,
-            fieldname=field_name
-        ), 'options')
+
+	meta = frappe.get_meta(doctype)
+
+	options = ''
+	for field in meta.fields:
+		if field.fieldname == field_name:
+			options = field.options
 
 	columns = []
 	if options:
@@ -118,6 +141,18 @@ def quick_kanban_board(doctype, board_name, field_name):
 	doc.kanban_board_name = board_name
 	doc.reference_doctype = doctype
 	doc.field_name = field_name
+
+	if doctype == 'Task':
+		project = frappe.new_doc('Project')
+		project.project_name = board_name
+		project.status = 'Open'
+		project.save()
+
+		doc.filters = '[["Task","project","=","{0}"]]'.format(board_name)
+
+	if doctype in ['Note', 'ToDo']:
+		doc.private = 1
+
 	doc.save()
 	return doc
 
@@ -167,4 +202,4 @@ def set_indicator(board_name, column_name, indicator):
 def save_filters(board_name, filters):
 	'''Save filters silently'''
 	frappe.db.set_value('Kanban Board', board_name, 'filters',
-	                    filters, update_modified=False)
+						filters, update_modified=False)

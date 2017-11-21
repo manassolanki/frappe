@@ -46,7 +46,7 @@ class TestCustomizeForm(unittest.TestCase):
 
 		d = self.get_customize_form("Event")
 		self.assertEquals(d.doc_type, "Event")
-		self.assertEquals(len(d.get("fields")), 28)
+		self.assertEquals(len(d.get("fields")), 29)
 
 		d = self.get_customize_form("User")
 		self.assertEquals(d.doc_type, "User")
@@ -165,22 +165,22 @@ class TestCustomizeForm(unittest.TestCase):
 		df = d.get("fields", {"fieldname": "title"})[0]
 
 		# invalid fieldname
-		df.options = """{doc_type} - {introduction_test}"""
+		df.default = """{doc_type} - {introduction_test}"""
 		self.assertRaises(InvalidFieldNameError, d.run_method, "save_customization")
 
 		# space in formatter
-		df.options = """{doc_type} - {introduction text}"""
+		df.default = """{doc_type} - {introduction text}"""
 		self.assertRaises(InvalidFieldNameError, d.run_method, "save_customization")
 
 		# valid fieldname
-		df.options = """{doc_type} - {introduction_text}"""
+		df.default = """{doc_type} - {introduction_text}"""
 		d.run_method("save_customization")
 
 		# valid fieldname with escaped curlies
-		df.options = """{{ {doc_type} }} - {introduction_text}"""
+		df.default = """{{ {doc_type} }} - {introduction_text}"""
 		d.run_method("save_customization")
 
 		# undo
-		df.options = None
+		df.default = None
 		d.run_method("save_customization")
 

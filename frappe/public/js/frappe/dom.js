@@ -10,6 +10,11 @@ frappe.dom = {
 	by_id: function(id) {
 		return document.getElementById(id);
 	},
+	get_unique_id: function() {
+		const id = 'unique-' + frappe.dom.id_count;
+		frappe.dom.id_count++;
+		return id;
+	},
 	set_unique_id: function(ele) {
 		var $ele = $(ele);
 		if($ele.attr('id')) {
@@ -30,30 +35,47 @@ frappe.dom = {
 	remove_script_and_style: function(txt) {
 		var div = document.createElement('div');
 		div.innerHTML = txt;
+		var found = false;
 		["script", "style", "noscript", "title", "meta", "base", "head"].forEach(function(e, i) {
 			var elements = div.getElementsByTagName(e);
 			var i = elements.length;
 			while (i--) {
+				found = true;
 				elements[i].parentNode.removeChild(elements[i]);
 			}
 		});
-		return div.innerHTML;
+
+		// remove links with rel="stylesheet"
+		var elements = div.getElementsByTagName('link');
+		var i = elements.length;
+		while (i--) {
+			if (elements[i].getAttribute("rel")=="stylesheet"){
+				found = true;
+				elements[i].parentNode.removeChild(elements[i]);
+			}
+		}
+		if(found) {
+			return div.innerHTML;
+		} else {
+			// don't disturb
+			return txt;
+		}
 	},
 	is_element_in_viewport: function (el) {
 
-	    //special bonus for those using jQuery
-	    if (typeof jQuery === "function" && el instanceof jQuery) {
-	        el = el[0];
-	    }
+		//special bonus for those using jQuery
+		if (typeof jQuery === "function" && el instanceof jQuery) {
+			el = el[0];
+		}
 
-	    var rect = el.getBoundingClientRect();
+		var rect = el.getBoundingClientRect();
 
-	    return (
-	        rect.top >= 0
-	        && rect.left >= 0
-	        // && rect.bottom <= (window.innerHeight || document.documentElement.clientHeight) && /*or $(window).height() */
-	        // && rect.right <= (window.innerWidth || document.documentElement.clientWidth) /*or $(window).width() */
-	    );
+		return (
+			rect.top >= 0
+			&& rect.left >= 0
+			// && rect.bottom <= (window.innerHeight || document.documentElement.clientHeight) && /*or $(window).height() */
+			// && rect.right <= (window.innerWidth || document.documentElement.clientWidth) /*or $(window).width() */
+		);
 	},
 
 	set_style: function(txt, id) {
@@ -76,6 +98,7 @@ frappe.dom = {
 			se.appendChild(document.createTextNode(txt));
 		}
 		document.getElementsByTagName('head')[0].appendChild(se);
+		return se;
 	},
 	add: function(parent, newtag, className, cs, innerHTML, onclick) {
 		if(parent && parent.substr)parent = frappe.dom.by_id(parent);
@@ -98,7 +121,7 @@ frappe.dom = {
 	css: function(ele, s) {
 		if(ele && s) {
 			$.extend(ele.style, s);
-		};
+		}
 		return ele;
 	},
 	freeze: function(msg, css_class) {
@@ -132,16 +155,13 @@ frappe.dom = {
 		if(!frappe.dom.freeze_count) return; // anything open?
 		frappe.dom.freeze_count--;
 		if(!frappe.dom.freeze_count) {
-			var freeze = $('#freeze').removeClass("in");
-			setTimeout(function() {
-				if(!frappe.dom.freeze_count) { freeze.remove(); }
-			}, 150);
+			var freeze = $('#freeze').removeClass("in").remove();
 		}
 	},
 	save_selection: function() {
 		// via http://stackoverflow.com/questions/5605401/insert-link-in-contenteditable-element
 		if (window.getSelection) {
-			sel = window.getSelection();
+			var sel = window.getSelection();
 			if (sel.getRangeAt && sel.rangeCount) {
 				var ranges = [];
 				for (var i = 0, len = sel.rangeCount; i < len; ++i) {
@@ -157,7 +177,7 @@ frappe.dom = {
 	restore_selection: function(savedSel) {
 		if (savedSel) {
 			if (window.getSelection) {
-				sel = window.getSelection();
+				var sel = window.getSelection();
 				sel.removeAllRanges();
 				for (var i = 0, len = savedSel.length; i < len; ++i) {
 					sel.addRange(savedSel[i]);
@@ -181,22 +201,35 @@ frappe.ellipsis = function(text, max) {
 	return text;
 };
 
-frappe.get_modal = function(title, content) {
-	return $(frappe.render_template("modal", {title:title, content:content})).appendTo(document.body);
+frappe.run_serially = function(tasks) {
+	var result = Promise.resolve();
+	tasks.forEach(task => {
+		if(task) {
+			result = result.then ? result.then(task) : Promise.resolve();
+		}
+	});
+	return result;
 };
 
-frappe._in = function(source, target) {
-	// returns true if source is in target and both are not empty / falsy
-	if(!source) return false;
-	if(!target) return false;
-	return (target.indexOf(source) !== -1);
+frappe.timeout = seconds => {
+	return new Promise((resolve) => {
+		setTimeout(() => resolve(), seconds * 1000);
+	});
+};
+
+frappe.scrub = function(text) {
+	return text.replace(/ /g, "_").toLowerCase();
+};
+
+frappe.get_modal = function(title, content) {
+	return $(frappe.render_template("modal", {title:title, content:content})).appendTo(document.body);
 };
 
 // add <option> list to <select>
 (function($) {
 	$.fn.add_options = function(options_list) {
 		// create options
-		for(var i=0; i<options_list.length; i++) {
+		for(var i=0, j=options_list.length; i<j; i++) {
 			var v = options_list[i];
 			if (is_null(v)) {
 				var value = null;
@@ -228,48 +261,48 @@ frappe._in = function(source, target) {
 })(jQuery);
 
 (function($) {
-    function pasteIntoInput(el, text) {
-        el.focus();
-        if (typeof el.selectionStart == "number") {
-            var val = el.value;
-            var selStart = el.selectionStart;
-            el.value = val.slice(0, selStart) + text + val.slice(el.selectionEnd);
-            el.selectionEnd = el.selectionStart = selStart + text.length;
-        } else if (typeof document.selection != "undefined") {
-            var textRange = document.selection.createRange();
-            textRange.text = text;
-            textRange.collapse(false);
-            textRange.select();
-        }
-    }
+	function pasteIntoInput(el, text) {
+		el.focus();
+		if (typeof el.selectionStart == "number") {
+			var val = el.value;
+			var selStart = el.selectionStart;
+			el.value = val.slice(0, selStart) + text + val.slice(el.selectionEnd);
+			el.selectionEnd = el.selectionStart = selStart + text.length;
+		} else if (typeof document.selection != "undefined") {
+			var textRange = document.selection.createRange();
+			textRange.text = text;
+			textRange.collapse(false);
+			textRange.select();
+		}
+	}
 
-    function allowTabChar(el) {
-        $(el).keydown(function(e) {
-            if (e.which == 9) {
-                pasteIntoInput(this, "\t");
-                return false;
-            }
-        });
+	function allowTabChar(el) {
+		$(el).keydown(function(e) {
+			if (e.which == 9) {
+				pasteIntoInput(this, "\t");
+				return false;
+			}
+		});
 
-        // For Opera, which only allows suppression of keypress events, not keydown
-        $(el).keypress(function(e) {
-            if (e.which == 9) {
-                return false;
-            }
-        });
-    }
+		// For Opera, which only allows suppression of keypress events, not keydown
+		$(el).keypress(function(e) {
+			if (e.which == 9) {
+				return false;
+			}
+		});
+	}
 
-    $.fn.allowTabs = function() {
-        if (this.jquery) {
-            this.each(function() {
-                if (this.nodeType == 1) {
-                    var nodeName = this.nodeName.toLowerCase();
-                    if (nodeName == "textarea" || (nodeName == "input" && this.type == "text")) {
-                        allowTabChar(this);
-                    }
-                }
-            })
-        }
-        return this;
-    }
+	$.fn.allowTabs = function() {
+		if (this.jquery) {
+			this.each(function() {
+				if (this.nodeType == 1) {
+					var nodeName = this.nodeName.toLowerCase();
+					if (nodeName == "textarea" || (nodeName == "input" && this.type == "text")) {
+						allowTabChar(this);
+					}
+				}
+			})
+		}
+		return this;
+	}
 })(jQuery);
