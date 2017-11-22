@@ -42,15 +42,18 @@ class DataImport(Document):
 			self.name = "Import on "+ format_datetime(self.creation)
 
 	def import_data(self, args=None):
-		frappe.msgprint("import started")
 		print ("********************************")
-		print (args)
-	
+		args = frappe._dict(args)
+		if args.validate:
+			upload(data_import_doc=self, from_data_import="Yes", validate_template=True)
+		else:
+			upload(data_import_doc=self, from_data_import="Yes")
+
 
 @frappe.whitelist()
 def upload(rows = None, submit_after_import=None, ignore_encoding_errors=False, no_email=True, overwrite=None,
 	update_only = None, ignore_links=False, pre_process=None, via_console=False, from_data_import="No",
-	skip_errors = True, data_import_doc=None):
+	skip_errors = True, data_import_doc=None, validate_template=False):
 	"""upload data"""
 
 
@@ -259,18 +262,16 @@ def upload(rows = None, submit_after_import=None, ignore_encoding_errors=False, 
 
 	# header
 	if not rows:
-		from frappe.utils.file_manager import get_file_doc
-		file_doc = get_file_doc(dt='', dn="Data Import", folder='Home', is_private=1)
-		filename, file_extension = os.path.splitext(file_doc.file_name)
+		from frappe.utils.file_manager import get_file # get_file_doc
+		fname, fcontent = get_file(data_import_doc.import_file)
+		filename, file_extension = os.path.splitext(fname)
 
 		if file_extension == '.xlsx' and from_data_import == 'Yes':
 			from frappe.utils.xlsxutils import read_xlsx_file_from_attached_file
-			rows = read_xlsx_file_from_attached_file(file_id=file_doc.name)
+			rows = read_xlsx_file_from_attached_file(file_id=data_import_doc.import_file)
 
 		elif file_extension == '.csv':
-			from frappe.utils.file_manager import get_file
 			from frappe.utils.csvutils import read_csv_content
-			fname, fcontent = get_file(file_doc.name)
 			rows = read_csv_content(fcontent, ignore_encoding_errors)
 
 		else:
@@ -284,6 +285,7 @@ def upload(rows = None, submit_after_import=None, ignore_encoding_errors=False, 
 	doctypes = []
 	column_idx_to_fieldname = {}
 	column_idx_to_fieldtype = {}
+	attachments = []
 
 	if submit_after_import and not cint(frappe.db.get_value("DocType",
 			doctype, "is_submittable")):
@@ -394,10 +396,10 @@ def upload(rows = None, submit_after_import=None, ignore_encoding_errors=False, 
 				if doc:
 					frappe.errprint(doc if isinstance(doc, dict) else doc.as_dict())
 				err_msg = frappe.local.message_log and "\n\n".join(frappe.local.message_log) or cstr(e)
-
+				print (err_msg)
 				frappe.errprint(frappe.get_traceback())
 				# log details for import
-				log([i+1,file_data[i][0],"Error:"+err_msg.message])
+				log([i+1, data[i][0],"Error:" + err_msg])
 
 		finally:
 			frappe.local.message_log = []

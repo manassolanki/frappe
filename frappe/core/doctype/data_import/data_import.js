@@ -12,6 +12,16 @@ frappe.ui.form.on('Data Import', {
 		frm.disable_save();
 	},
 
+	onload: function(frm) {
+		frappe.realtime.on("data_import", function(data) {
+			if(data.progress) {
+				frappe.hide_msgprint(true);
+				frappe.show_progress(__("Importing"), data.progress[0],
+					data.progress[1]);
+			}
+		});		
+	},
+
 	refresh: function(frm) {
 		frm.add_custom_button(__("Help"), function() {
 			frappe.help.show_video("6wiriRKPhmg");
@@ -83,7 +93,7 @@ frappe.ui.form.on('Data Import', {
 				validate: validate
 			},
 			callback: function(r) {
-				console.log(r);	
+				frm.refresh();
 			}
 		});
 	},
