@@ -247,7 +247,7 @@ def import_csv(context, path, only_insert=False, submit_after_import=False, igno
 	frappe.connect()
 
 	try:
-		data_import.import_template(content, submit_after_import=submit_after_import, no_email=no_email,
+		data_import.upload(content, submit_after_import=submit_after_import, no_email=no_email,
 			ignore_encoding_errors=ignore_encoding_errors, overwrite=not only_insert,
 			via_console=True)
 		frappe.db.commit()

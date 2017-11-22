@@ -331,8 +331,8 @@ def get_template(doctype=None, parent_doctype=None, all_doctypes="No", with_data
 
 
 def export_csv(doctype, path):
-	with open(path, "w") as csvfile:
-		get_template(xlsx_format='0', doctype=doctype, all_doctypes="Yes", with_data="Yes")
+	with open(path, "wb") as csvfile:
+		get_template(doctype=doctype, all_doctypes="Yes", with_data="Yes")
 		csvfile.write(frappe.response.result.encode("utf-8"))
 
 

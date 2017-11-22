@@ -13,14 +13,26 @@ frappe.ui.form.on('Export Template', {
 	},
 
 	refresh: function(frm) {
-		frm.doc.get_template_url = '/api/method/frappe.core.doctype.export_template.export_template.get_template';
 		if (frappe.route_options) {
 			frm.set_value("reference_doctype", frappe.route_options.reference_doctype)
 			frappe.route_options = null;
 		}
 
+		frm.add_custom_button(__("Help"), function() {
+			frappe.help.show_video("6wiriRKPhmg");
+		});
+
 		frm.add_custom_button(__("Import Data"), function() {
 			frappe.set_route('List', 'Data Import');
+		});
+
+		frm.page.set_primary_action(__("Download"), function() {
+			if (frm.doc.reference_doctype) {
+				let get_template_url = '/api/method/frappe.core.doctype.export_template.export_template.get_template';
+				open_url_post(get_template_url, frm.events.get_export_params(frm));
+			} else {
+				frappe.msgprint(__("Please select the Document Type."))
+			}
 		});
 	},
 
@@ -54,26 +66,11 @@ frappe.ui.form.on('Export Template', {
 					frm.$columns.find('.select-column-check').prop('checked', false);
 					frm.$columns.find('.select-column-check[data-reqd="1"]').prop('checked', true);
 				});
-				if (frm.get_field('download_blank_template').$input) {
-					frm.get_field('download_blank_template').$input.addClass("btn-primary");
-				}
-				if (frm.get_field('download_with_data').$input) {
-					frm.get_field('download_with_data').$input.addClass("btn-primary");
-				}
 			}
 		});
-
 	},
 
-	download_blank_template: function(frm) {
-		open_url_post(frm.doc.get_template_url, frm.events.get_export_params(frm, false));
-	},
-
-	download_with_data: function(frm) {
-		open_url_post(frm.doc.get_template_url, frm.events.get_export_params(frm, true));
-	},
-
-	get_export_params: function(frm, with_data) {
+	get_export_params: function(frm) {
 		var doctype = frm.doc.reference_doctype;
 		var columns = {};
 
@@ -90,7 +87,7 @@ frappe.ui.form.on('Export Template', {
 			doctype: doctype,
 			parent_doctype: doctype,
 			select_columns: JSON.stringify(columns),
-			with_data: with_data ? 'Yes' : 'No',
+			with_data: frm.doc.with_data ? 'Yes' : 'No',
 			all_doctypes: 'Yes',
 			from_data_import: 'Yes',
 			excel_format: frm.doc.download_in_xlsx ? 'Yes' : 'No'

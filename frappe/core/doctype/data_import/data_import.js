@@ -13,7 +13,9 @@ frappe.ui.form.on('Data Import', {
 	},
 
 	refresh: function(frm) {
-		frm.events.add_primary_class(frm);
+		frm.add_custom_button(__("Help"), function() {
+			frappe.help.show_video("6wiriRKPhmg");
+		});
 
 		if(frm.doc.reference_doctype) {
 			frm.add_custom_button(__("Download template"), function() {
@@ -21,54 +23,22 @@ frappe.ui.form.on('Data Import', {
 				frappe.set_route('Form', 'Export Template');
 			});
 		}
-		// if (frm.doc.log_details) {
-		// 	frm.events.write_messages(frm);
-		// 	if (frm.doc.import_status == "Success") {
-		// 		frm.disable_save();
-		// 		frm.set_read_only();
-		// 	} else {
-		// 		frm.enable_save();
-		// 	}
-		// }
-	},
 
-	add_primary_class: function(frm) {
-		if(frm.class_added) return;
-		setTimeout(function() {
-			try {
-				frm.get_field('import_button').$input.addClass("btn-primary btn-md")
-					.removeClass('btn-xs');
-				// frm.get_field('import_file').$input.addClass("btn-primary btn-md")
-				// 	.removeClass('btn-xs');
-				frm.class_added = true;
-			} catch (err) {
-				frm.class_added = false;
-			}
-		}, 500)
-	},
-
-	before_save: function(frm) {
-		if (frm.doc.flag_file_preview) {
-			var column_map = [];
-			$(frm.fields_dict.file_preview.wrapper).find("select.column-map" ).each(function(index) {
-				var c_map
-				if ($(this).val() == null) {
-					c_map = [null,null,null]
-				} else {
-					c_map = $(this).val().split(",");
-					frappe.meta.get_table_fields(frm.doc.reference_doctype).forEach(function(df) {
-
-						if (df.options == c_map[1] && df.options != frm.doc.reference_doctype) {
-							c_map[2] = df.fieldname
-						} else if (df.options == frm.doc.reference_doctype) {
-							c_map[2] = null
-						}
-					});
-				} 
-				column_map.push(c_map);
+		if (frm.doc.reference_doctype && frm.doc.import_file) {
+			frm.add_custom_button(__("Validate Template"), function() {
+				frm.events.data_import(frm, true);
 			});
-			if(column_map.length != 0){
-				frm.doc.selected_columns = JSON.stringify(column_map);
+			frm.add_custom_button(__("Start Import"), function() {
+				frm.events.data_import(frm, false);
+			}).addClass('btn btn-primary');
+		}
+
+		if (frm.doc.log_details) {
+			frm.events.write_messages(frm);
+			if (frm.doc.import_status == "Success") {
+				frm.disable_save();
+			} else {
+				frm.enable_save();
 			}
 		}
 	},
@@ -77,78 +47,45 @@ frappe.ui.form.on('Data Import', {
 		frm.save();
 	},
 
-	template: function(frm) {
+	import_file: function(frm) {
 		frm.save();
 	},
 
-	// render_html: function(frm) {
-	// 	var me = this;
+	only_new_records: function(frm) {
+		frm.save();
+	},
 
+	only_update: function(frm) {
+		frm.save();
+	},
 
-	// 	frappe.model.with_doctype(frm.doc.reference_doctype, function() {
-	// 		if(frm.doc.reference_doctype && frm.doc.preview_data) {
-	// 			frm.selected_doctype = frappe.get_meta(frm.doc.reference_doctype).fields;
-	// 			me.preview_data = JSON.parse(frm.doc.preview_data);
+	submit_after_import: function(frm) {
+		frm.save();
+	},
 
-	// 			var parent_doctype = frappe.get_doc('DocType', frm.doc.reference_doctype);
-	// 			parent_doctype["reqd"] = true;
-	// 			var doctype_list = [parent_doctype];
-	// 			frappe.meta.get_table_fields(frm.doc.reference_doctype).forEach(function(df) {
-	// 				var d = frappe.get_doc('DocType', df.options);
-	// 				d["reqd"]=df.reqd;
-	// 				doctype_list.push(d);
-	// 			});
+	skip_errors: function(frm) {
+		frm.save();
+	},
 
-	// 			console.log(" in render template");
-				
-	// 			$(frm.fields_dict.file_preview.wrapper).empty();
-	// 			$(frappe.render_template("file_preview_template", {
-	// 				imported_data: me.preview_data, 
-	// 				doctype_list:doctype_list
-	// 			}))
-	// 			.appendTo(frm.fields_dict.file_preview.wrapper);
+	ignore_encoding_errors: function(frm) {
+		frm.save();
+	},
 
-	// 			me.selected_columns = JSON.parse(frm.doc.selected_columns);
+	no_email: function(frm) {
+		frm.save();
+	},
 
-	// 			var count = 0;
-	// 			$(frm.fields_dict.file_preview.wrapper).find("select.column-map" )
-	// 				.each(function(index) {
-
-	// 					var tmp = me.selected_columns[count].slice(0,2).join(",")
-	// 					$(this).val(tmp)
-	// 					if (!me.selected_columns[count][0]) {
-	// 						$(this).parent().addClass("has-error");
-	// 					}
-
-	// 					$(this).on("change",function() {
-	// 						frm.save();
-	// 					})
-	// 					count++;
-	// 			});
-	// 		}
-	// 	});
-	// 	frm.doc.flag_file_preview = 1;
-	// },
-
-	import_button: function(frm) {
-		if (!frm.doc.import_file) {
-			frappe.throw("Attach a file for importing")
-		} else {
-			frappe.realtime.on("data_import", function(data) {
-				if(data.progress) {
-					frappe.hide_msgprint(true);
-					frappe.show_progress(__("Importing"), data.progress[0],
-						data.progress[1]);
-				}
-			})
-			frappe.call({
-				method: "file_import",
-				doc:frm.doc,
-				callback: function(r) {
-					
-				}
-			});
-		}
+	data_import: function(frm, validate) {
+		frappe.call({
+			method: "import_data",
+			doc: frm.doc,
+			args: {
+				validate: validate
+			},
+			callback: function(r) {
+				console.log(r);	
+			}
+		});
 	},
 
 	write_messages: function(frm) {
@@ -168,3 +105,45 @@ frappe.ui.form.on('Data Import', {
 		}
 	}
 });
+
+
+	// add_primary_class: function(frm) {
+	// 	if(frm.class_added) return;
+	// 	setTimeout(function() {
+	// 		try {
+	// 			frm.get_field('import_button').$input.addClass("btn-primary btn-md")
+	// 				.removeClass('btn-xs');
+	// 			// frm.get_field('import_file').$input.addClass("btn-primary btn-md")
+	// 			// 	.removeClass('btn-xs');
+	// 			frm.class_added = true;
+	// 		} catch (err) {
+	// 			frm.class_added = false;
+	// 		}
+	// 	}, 500)
+	// },
+
+	// import_button: function(frm) {
+	// 	if (!frm.doc.import_file) {
+	// 		frappe.msgprint("Attach a file for importing")
+	// 	} else {
+	// 		frappe.realtime.on("data_import", function(data) {
+	// 			if(data.progress) {
+	// 				frappe.hide_msgprint(true);
+	// 				frappe.show_progress(__("Importing"), data.progress[0],
+	// 					data.progress[1]);
+	// 			}
+	// 		})
+	// 		// frm.save()
+	// 		// 	.then( () => {
+	// 		// 		console.log("frappe call");
+	// 		// 		frappe.call({
+	// 		// 			method: "import_data",
+	// 		// 			doc:frm.doc,
+	// 		// 			callback: function(r) {
+	// 		// 				console.log(r);	
+	// 		// 			}
+	// 		// 		});
+	// 		// 	});
+	// 	}
+	// },
+
