@@ -383,6 +383,7 @@ def upload(rows = None, submit_after_import=None, ignore_encoding_errors=False, 
 				if attachments:
 					# check file url and create a File document
 					for file_url in attachments:
+						print (doc)
 						attach_file_to_doc(doc.doctype, doc.name, file_url)
 				if submit_after_import:
 					doc.submit()

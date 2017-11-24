@@ -2,38 +2,125 @@
 // For license information, please see license.txt
 
 frappe.ui.form.on('Data Import', {
-
+	
 	setup: function(frm) {
 		var doctype_options = "";
 		for (var i=0, l=frappe.boot.user.can_import.sort().length; i<l; i++) {
 			doctype_options = doctype_options + "\n" + frappe.boot.user.can_import[i];
 		}
 		frm.get_field('reference_doctype').df.options = doctype_options;
-		frm.disable_save();
 	},
-
+	
 	onload: function(frm) {
+		frm.disable_save();
+		console.log("save disabled");
 		frappe.realtime.on("data_import", function(data) {
 			if(data.progress) {
 				frappe.hide_msgprint(true);
 				frappe.show_progress(__("Importing"), data.progress[0],
-					data.progress[1]);
+				data.progress[1]);
 			}
 		});		
 	},
-
+				
 	refresh: function(frm) {
+		var download_dialog = new frappe.ui.Dialog({
+			title: __('Download Template'),
+			fields: [
+				{
+					"label": "Download in Excel File Format",
+					"fieldname": "download_in_xlsx",
+					"fieldtype": "Check",
+					"default": "1"
+				},
+				{
+					"label": "Download with Data",
+					"fieldname": "with_data",
+					"fieldtype": "Check"
+				},
+				{
+					"label": "Document Fields",
+					"fieldname": "document_fields",
+					"fieldtype": "Select",
+					"options": "Select All\nSelect Mandatory\nSelect Manually",
+					"reqd": 1,
+					"onchange": function() {
+						frm.$dialog_wrapper = $(download_dialog.fields_dict.doctype_columns.wrapper).empty();						
+						frappe.model.with_doctype(frm.doc.reference_doctype, function() {
+							if(frm.doc.reference_doctype) {
+								// render select columns
+								var parent_doctype = frappe.get_doc('DocType', frm.doc.reference_doctype);
+								parent_doctype["reqd"] = true;
+								var doctype_list = [parent_doctype];
+								frappe.meta.get_table_fields(frm.doc.reference_doctype).forEach(function(df) {
+									var d = frappe.get_doc('DocType', df.options);
+									d["reqd"]=df.reqd;
+									doctype_list.push(d);
+								});
+								$(frappe.render_template("export_template", {doctype_list: doctype_list}))
+									.appendTo(frm.$dialog_wrapper.empty());
+							}
+						});
+						if (this.value === "Select All") {
+							frm.$dialog_wrapper.addClass("hidden");
+							frm.$dialog_wrapper.find('.select-column-check').prop('checked', true);
+						} else if (this.value === "Select Mandatory") {
+							frm.$dialog_wrapper.addClass("hidden");							
+							frm.$dialog_wrapper.find('.select-column-check').prop('checked', false);
+							frm.$dialog_wrapper.find('.select-column-check[data-reqd="1"]').prop('checked', true);
+						} else if (this.value === "Select Manually") {
+							frm.$dialog_wrapper.removeClass("hidden");						
+						}
+					}
+				},
+				{
+					"label": "",
+					"fieldname": "doctype_columns",
+					"fieldtype": "HTML"
+				}
+			],
+			primary_action: function() {
+				var data = download_dialog.get_values();
+				if (frm.doc.reference_doctype) {
+					var export_params = ()  => {
+						let columns = {};
+						frm.$dialog_wrapper.find('.select-column-check:checked').each(function() {
+							let _doctype = $(this).attr('data-doctype');
+							let _fieldname = $(this).attr('data-fieldname');
+							if(!columns[_doctype]) {
+								columns[_doctype] = [];
+							}
+							columns[_doctype].push(_fieldname);
+						});
+						return {
+							doctype: frm.doc.reference_doctype,
+							parent_doctype: frm.doc.reference_doctype,
+							select_columns: JSON.stringify(columns),
+							with_data: data.with_data ? 'Yes' : 'No',
+							all_doctypes: 'Yes',
+							from_data_import: 'Yes',
+							excel_format: data.download_in_xlsx ? 'Yes' : 'No'
+						}
+					};
+					let get_template_url = '/api/method/frappe.core.doctype.export_template.export_template.get_template';
+					open_url_post(get_template_url, export_params());
+				} else {
+					frappe.msgprint(__("Please select the Document Type."))
+				}			
+				download_dialog.hide();
+			},
+			primary_action_label: __('Download')
+		});
 		frm.add_custom_button(__("Help"), function() {
 			frappe.help.show_video("6wiriRKPhmg");
 		});
 
 		if(frm.doc.reference_doctype) {
 			frm.add_custom_button(__("Download template"), function() {
-				frappe.route_options = {"reference_doctype": frm.doc.reference_doctype};
-				frappe.set_route('Form', 'Export Template');
+				download_dialog.show();
 			});
 		}
-
+		
 		if (frm.doc.reference_doctype && frm.doc.import_file) {
 			frm.add_custom_button(__("Validate Template"), function() {
 				frm.events.data_import(frm, true);
@@ -42,17 +129,40 @@ frappe.ui.form.on('Data Import', {
 				frm.events.data_import(frm, false);
 			}).addClass('btn btn-primary');
 		}
-
+		
 		if (frm.doc.log_details) {
 			frm.events.write_messages(frm);
-			if (frm.doc.import_status == "Success") {
-				frm.disable_save();
-			} else {
-				frm.enable_save();
-			}
+			// if (frm.doc.import_status == "Success") {
+			// 	frm.disable_save();
+			// } else {
+			// 	frm.enable_save();
+			// }
 		}
 	},
 
+	// get_export_params: function(frm) {
+	// 	var columns = {};
+
+	// 	frm.$dialog_wrapper.find('.select-column-check:checked').each(function() {
+	// 		var _doctype = $(this).attr('data-doctype');
+	// 		var _fieldname = $(this).attr('data-fieldname');
+	// 		if(!columns[_doctype]) {
+	// 			columns[_doctype] = [];
+	// 		}
+	// 		columns[_doctype].push(_fieldname);
+	// 	});
+
+	// 	return {
+	// 		doctype: frm.doc.reference_doctype,
+	// 		parent_doctype: frm.doc.reference_doctype,
+	// 		select_columns: JSON.stringify(columns),
+	// 		with_data: frm.doc.with_data ? 'Yes' : 'No',
+	// 		all_doctypes: 'Yes',
+	// 		from_data_import: 'Yes',
+	// 		excel_format: frm.doc.download_in_xlsx ? 'Yes' : 'No'
+	// 	}
+	// },
+	
 	reference_doctype: function(frm) {
 		frm.save();
 	},

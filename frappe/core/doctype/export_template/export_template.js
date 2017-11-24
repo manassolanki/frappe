@@ -28,6 +28,7 @@ frappe.ui.form.on('Export Template', {
 
 		frm.page.set_primary_action(__("Download"), function() {
 			if (frm.doc.reference_doctype) {
+				console.log(frm.events.get_export_params(frm));
 				let get_template_url = '/api/method/frappe.core.doctype.export_template.export_template.get_template';
 				open_url_post(get_template_url, frm.events.get_export_params(frm));
 			} else {
@@ -51,6 +52,7 @@ frappe.ui.form.on('Export Template', {
 					d["reqd"]=df.reqd;
 					doctype_list.push(d);
 				});
+				console.log(doctype_list);
 				$(frappe.render_template("export_template", {doctype_list: doctype_list}))
 					.appendTo(frm.$columns.empty());
 
