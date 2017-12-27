@@ -1,4 +1,5 @@
 frappe.ready(function() {
+	console.log('webform list');
 	var next_start = {{ next_start or 0 }};
 	var result_wrapper = $(".website-list .result");
 
