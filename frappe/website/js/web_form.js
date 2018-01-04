@@ -1,3 +1,6 @@
+// frappe.provide('frappe.ui.form.ControlAutocomplete');
+frappe.provide("frappe.ui");
+
 frappe.ready(function() {
 	if (web_form_settings.is_list) {
 		render_list();
@@ -47,7 +50,7 @@ function render_list() {
 function render_form() {
 	const { web_form_doctype: doctype, doc_name: name, web_form_name } = web_form_settings;
 
-	const wrapper = $(`.page-container[data-path="${web_form_name}"] .page-content`);
+	const wrapper = $(`.page-container[data-path="${web_form_name}"] .page-content .page-content-wrapper .page_content`);
 
 	frappe.call({
 		method: 'frappe.website.doctype.web_form.web_form.get_form_data',
@@ -55,14 +58,17 @@ function render_form() {
 	}).then(r => {
 		const { doc, web_form } = r.message;
 		// console.log(web_form);
+		// debugger;
 		render_form(doc, web_form);
 	});
 
 	function render_form(doc, web_form) {
-
+		var me = this;
+		var link_field_list = [];
 		const fields = web_form.web_form_fields.map(df => {
 			if (df.fieldtype === 'Link') {
-				df.fieldtype = 'Select';
+				df.fieldtype = 'Data';
+				// link_field_list.push(df.fieldname);
 			}
 
 			delete df.parent;
@@ -73,16 +79,87 @@ function render_form() {
 			return df;
 		});
 
+		// console.log(fields);
 		const layout = new frappe.ui.FieldGroup({
 			parent: wrapper,
-			fields: web_form.web_form_fields
+			fields: fields
 		});
 
 		layout.make();
-
 		console.log(layout);
+		for (var i in layout.fields_list) {
+			console.log(i);
+			let field = layout.fields_list[i];
+			if (field.input && link_field_list.includes(field.df.fieldname) ) {
+				// console.log(field);
+				// field.df.options = ["STD 1", "STD 2", "STD 3"];
+				// field_control = new frappe.ui.form.ControlAutocomplete(field);
+				// field_control.make_input();
+				console.log(field_control);
+				// var awesomplete = new Awesomplete(field.input, 
+				var awesomplete = new Awesomplete(field, {
+					minChars: 0,
+					maxItems: 99,
+					autoFirst: true,
+					list: ["STD I", "STD II"],
+					item: function(item, input) {
+						return $('<li>').text(item.value).get(0);
+					}
+				});
+				// 	filter: function(text, input) { return true },
+				// 	replace: function(text) {
+				// 		var before = this.input.value.match(/^.+,\s*|/)[0];
+				// 		this.input.value = before + text + ", ";
+				// 	}
+				// });
+				
+				// setup_awesomplete_for_input(field.input);
+			}
+		}
 	}
 }
+
+function setup_awesomplete_for_input(input) {
+	function split(val) {
+		return val.split( /,\s*/ );
+	}
+	function extractLast(term) {
+		return split(term).pop();
+	}
+
+	var awesomplete = new Awesomplete(input, {
+		minChars: 0,
+		maxItems: 99,
+		autoFirst: true,
+		list: [],
+		item: function(item, input) {
+			return $('<li>').text(item.value).get(0);
+		},
+		filter: function(text, input) { return true },
+		replace: function(text) {
+			var before = this.input.value.match(/^.+,\s*|/)[0];
+			this.input.value = before + text + ", ";
+		}
+	});
+	var delay_timer;
+	var $input = $(input);
+	$input.on("input", function(e) {
+		clearTimeout(delay_timer);
+		delay_timer = setTimeout(function() {
+			var term = e.target.value;
+			frappe.call({
+				method:'frappe.email.get_contact_list',
+				args: {
+					'txt': extractLast(term) || '%'
+				},
+				quiet: true,
+				callback: function(r) {
+					awesomplete.list = r.message || [];
+				}
+			});
+		},250);
+	});
+};
 
 /*
 frappe.ready(function() {
