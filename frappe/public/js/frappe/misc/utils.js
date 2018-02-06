@@ -630,6 +630,20 @@ frappe.utils = {
 			return `<a href="${route}">${name}</a>`;
 		}
 		return route;
+	},
+	is_empty: function(value) {
+		let empty = false;
+	
+		if ( value === undefined || value === null )
+			empty = true;
+		else
+		if ( Array.isArray(value) || typeof value === 'string' || value instanceof $ )
+			empty = value.length === 0;
+		else
+		if ( typeof value === 'object' )
+			empty = Object.keys(value).length === 0;
+	
+		return empty;
 	}
 };
 

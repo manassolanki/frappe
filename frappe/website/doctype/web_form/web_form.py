@@ -123,6 +123,7 @@ def get_context(context):
 
 		doc, delimeter = make_route_string(frappe.form_dict)
 		context.doc = doc
+		context.defaults = frappe.defaults.get_defaults()
 		context.delimeter = delimeter
 
 		# check permissions
@@ -484,11 +485,12 @@ def make_route_string(parameters):
 				delimeter = '&'
 	return (route_string, delimeter)
 
+
 @frappe.whitelist()
-def get_form_data(doctype, name, web_form_name):
-	out = frappe._dict()
+def get_form_data(doctype, name):
+	return frappe.get_doc(doctype, name)
 
-	out.doc = frappe.get_doc(doctype, name)
-	out.web_form = frappe.get_doc('Web Form', web_form_name)
 
-	return out
+@frappe.whitelist()
+def get_web_form_data(web_form_name):
+	return frappe.get_doc('Web Form', web_form_name)

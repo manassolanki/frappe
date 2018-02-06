@@ -23,7 +23,7 @@ frappe.form.formatters = {
 	},
 	Float: function(value, docfield, options, doc) {
 		// don't allow 0 precision for Floats, hence or'ing with null
-		var precision = docfield.precision || cint(frappe.boot.sysdefaults.float_precision) || null;
+		var precision = docfield.precision || cint(frappe.sys_defaults.float_precision) || null;
 		if (docfield.options && docfield.options.trim()) {
 			// options points to a currency field, but expects precision of float!
 			docfield.precision = precision;
@@ -141,10 +141,10 @@ frappe.form.formatters = {
 	Datetime: function(value) {
 		if(value) {
 			var m = moment(frappe.datetime.convert_to_user_tz(value));
-			if(frappe.boot.sysdefaults.time_zone) {
-				m = m.tz(frappe.boot.sysdefaults.time_zone);
+			if(frappe.sys_defaults.time_zone) {
+				m = m.tz(frappe.sys_defaults.time_zone);
 			}
-			return m.format(frappe.boot.sysdefaults.date_format.toUpperCase() + ', h:mm a z');
+			return m.format(frappe.sys_defaults.date_format.toUpperCase() + ', h:mm a z');
 		} else {
 			return "";
 		}

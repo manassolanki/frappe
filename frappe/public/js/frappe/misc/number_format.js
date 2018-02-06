@@ -74,7 +74,12 @@ frappe.number_format_info = {
 window.format_number = function (v, format, decimals) {
 	if (!format) {
 		format = get_number_format();
-		if (decimals == null) decimals = cint(frappe.defaults.get_default("float_precision")) || 3;
+		if (decimals == null && frappe.defaults) {
+			decimals = cint(frappe.defaults.get_default("float_precision")) || 3;
+		} else if (decimals == null) {
+			// format number to 2 precision for web form
+			decimals = 2;
+		}
 	}
 
 	var info = get_number_format_info(format);

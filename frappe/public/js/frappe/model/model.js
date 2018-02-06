@@ -93,7 +93,7 @@ $.extend(frappe.model, {
 	},
 
 	with_doctype: function(doctype, callback, async) {
-		if(locals.DocType[doctype]) {
+		if(locals.DocType && locals.DocType[doctype]) {
 			callback && callback();
 		} else {
 			var cached_timestamp = null;
@@ -135,6 +135,9 @@ $.extend(frappe.model, {
 	},
 
 	init_doctype: function(doctype) {
+		// if (!locals.DocType) {
+		// 	locals.DocType = {};
+		// }
 		var meta = locals.DocType[doctype];
 		if(meta.__list_js) {
 			eval(meta.__list_js);

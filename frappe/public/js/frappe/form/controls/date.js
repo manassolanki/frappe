@@ -30,7 +30,12 @@ frappe.ui.form.ControlDate = frappe.ui.form.ControlData.extend({
 	},
 	set_date_options: function() {
 		var me = this;
-		var lang = frappe.boot.user.language;
+		var lang = null;
+		if (frappe.boot.user) {
+			var lang = frappe.boot.user.language;
+		} else {
+			var lang = frappe.boot.lang;
+		}
 		if(!$.fn.datepicker.language[lang]) {
 			lang = 'en';
 		}
@@ -40,7 +45,7 @@ frappe.ui.form.ControlDate = frappe.ui.form.ControlData.extend({
 			language: lang,
 			autoClose: true,
 			todayButton: true,
-			dateFormat: (frappe.boot.sysdefaults.date_format || 'yyyy-mm-dd'),
+			dateFormat: frappe.sys_defaults.date_format || 'yyyy-mm-dd',
 			startDate: frappe.datetime.now_date(true),
 			keyboardNav: false,
 			onSelect: () => {
@@ -111,6 +116,7 @@ frappe.ui.form.ControlDate = frappe.ui.form.ControlData.extend({
 	},
 	validate: function(value) {
 		if(value && !frappe.datetime.validate(value)) {
+			// const date_format = frappe.sys_defaults ? frappe.sys_defaults.date_format : "yyyy-mm-dd";
 			frappe.msgprint(__("Date must be in format: {0}", [frappe.sys_defaults.date_format || "yyyy-mm-dd"]));
 			return '';
 		}

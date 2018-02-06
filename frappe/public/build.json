@@ -379,16 +379,25 @@
 		"public/js/lib/slickgrid/slick.dataview.js"
 	],
 	"js/web_form.min.js": [
+
 		"website/js/web_form.js",
 		"public/js/lib/summernote/summernote.js",
 		"public/js/lib/datepicker/datepicker.min.js",
 		"public/js/lib/datepicker/datepicker.en.js",
 		"public/js/lib/awesomplete/awesomplete.min.js",
-		
+		"public/js/lib/moment/moment.min.js",
+		"public/js/lib/moment/moment-with-locales.min.js",
+		"public/js/lib/moment/moment-timezone-with-data.min.js",
+		"public/js/frappe/ui/keyboard.js",
 
 		"public/js/frappe/dom.js",
+		"public/js/frappe/class.js",
 		"public/js/frappe/ui/modal.html",
-
+		"public/js/frappe/model/sync.js",
+		"public/js/frappe/model/meta.js",
+		"public/js/frappe/model/model.js",
+		"public/js/frappe/model/create_new.js",
+		
 		"public/js/frappe/form/formatters.js",
 		"public/js/frappe/form/layout.js",
 		"public/js/frappe/ui/field_group.js",
@@ -396,7 +405,16 @@
 		"public/js/frappe/form/multi_select_dialog.js",
 		"public/js/frappe/ui/dialog.js",
 		"public/js/frappe/ui/capture.js",
+		"public/js/frappe/ui/messages.js",
+		"public/js/frappe/misc/utils.js",
+		"public/js/frappe/ui/upload.html",
+		"public/js/frappe/upload.js",
+		"public/js/frappe/ui/dropzone.js",
+		"public/js/frappe/socketio_client.js",
+		"public/js/frappe/misc/datetime.js",
+		"public/js/legacy/datatype.js",
 
+		"public/js/frappe/form/grid.js",
 		"public/js/frappe/form/controls/base_control.js",
 		"public/js/frappe/form/controls/base_input.js",
 		"public/js/frappe/form/controls/data.js",

@@ -2,43 +2,112 @@
 frappe.provide("frappe.ui");
 
 frappe.ready(function() {
-	if (web_form_settings.is_list) {
-		render_list();
-	} else {
-		render_form();
-	}
+	frappe.file_reading = false;
+	frappe.form_dirty = false;
+	// console.log(boot_info);
+	frappe.sys_defaults = {};
+	$.extend(frappe, web_form_settings);
+	$.extend(frappe.sys_defaults, boot_info);
+	$.extend(frappe.boot, boot_info);
+
+
+	frappe.web_form_settings = window.web_form_settings;
+	const { web_form_doctype, web_form_name } = web_form_settings;
+
+	const page_wrapper = $(`.page-container[data-path="${web_form_name}"] .page-content .page-content-wrapper .page_content`);
+
+	frappe.call({
+		method: 'frappe.website.doctype.web_form.web_form.get_web_form_data',
+		args: { web_form_name }
+	}).then(r => {
+		// console.log("web form doc", r.message);
+		const web_form_doc = r.message;
+		if (web_form_settings.is_list) {
+			render_list(web_form_doc, page_wrapper);
+		} else {
+			frappe.model.with_doctype(web_form_doc.doc_type, function() {
+				render_form(web_form_doc, page_wrapper);
+			});
+		}
+	});
 });
 
-function render_list() {
-	const { web_form_doctype, web_form_name } = web_form_settings;
-	
-	const wrapper = $(`.page-container[data-path="${web_form_name}"] .page-content`);
+// {% block header_actions %}
+// 	{% if not read_only and has_header %}
+// 	<div style="padding-bottom: 15px;">
+// 	    {% if login_required -%}
+// 		<a href="{{ cancel_url or pathname }}" class="btn btn-default btn-sm">
+// 	    	{{ _("Cancel") }}</a>
+// 		{%- endif %}
+// 		{% if not is_list %}
+// 	    <button type="submit" class="btn btn-primary btn-sm btn-form-submit">
+// 	    		{{ _("Save") }}</button>
+// 		{% endif %}
+// 	</div>
+// 	{% endif %}
+// 	{% if is_list %}
+// 	<div style="padding-bottom: 15px;">
+// 	    <a href="/{{ pathname }}{{ delimeter }}new=1{{ params_from_form_dict}}" class="btn btn-primary btn-new btn-sm">
+// 	    {{ _("New") }}
+// 	    </a>
+// 	</div>
+// 	{% endif %}
+// 	{%- if allow_print and not is_list and not _login_required -%}
+// 	<div class='text-right'>
+// 		<a class='text-muted small' href='/printview?doctype={{ doc.doctype}}&name={{ doc.name }}
+// 			{%- if print_format -%}&format={{ print_format }}{%- endif -%}' target="_blank" rel="noopener noreferrer">
+// 			<i class='fa fa-print'></i> {{ _("Print") }}</a>
+// 	</div>
+// 	{%- endif -%}
+// {% endblock %}
 
+
+function render_head(web_form_doc, doc) {
+	console.log(doc);
+	const head_wrapper = $(`.page-container[data-path="${web_form_doc.name}"] .page-content .page-content-wrapper .page-head`);
+
+	if (frappe.web_form_settings.is_list) {
+		$(`<div class="col-sm-8"><h1>${web_form_doc.doc_type}</h1></div>`).appendTo(head_wrapper);
+	} else {
+		$(`<div class="col-sm-8"><h1>${doc.name}</h1></div>`).appendTo(head_wrapper);
+	}
+	const action_block = $(`<div class="col-sm-4"><div class="page-header-actions-block"></div></div>`).appendTo(head_wrapper);
+	if (!frappe.web_form_settings.is_read_only && doc) {
+		$(".page-header-actions-block").html(`<div style="padding-bottom: 15px;">
+				<button type="submit" class="btn btn-primary btn-sm btn-form-submit">${ __("Save") }</button>
+			</div>`);
+	} else if (!frappe.web_form_settings.is_read_only && frappe.web_form_settings.is_list) {
+		$(".page-header-actions-block").html(`<div style="padding-bottom: 15px;">
+				<a href="/${web_form_doc.route}?new=1" class="btn btn-primary btn-new btn-sm">${ __("New") }</a>
+			</div>`);
+	}
+}
+
+
+function render_list(web_form_doc, wrapper) {
 	frappe.call({
 		method: 'frappe.client.get_list',
 		args: {
-			doctype: web_form_doctype,
+			doctype: web_form_doc.doc_type,
 			fields: ['name'],
 			filters: { 'owner': frappe.session.user }
 		}
 	}).then(r => {
 		const list = r.message || [];
+		// console.log("list of issues", r);
 		render_list_view(list);
+		render_head(web_form_doc);
+		
 	});
 
 	function render_list_view(list) {
 		const html = list.map(get_list_row_html).join('');
-		wrapper.html(`
-			<div class="page-head">
-				<h1>${web_form_doctype}</h1>
-			</div>
-			<div class="page_content">${html}</div>
-		`);
+		$(`<div class="website-list">${html}</div>`).appendTo(wrapper);
 	}
 
 	function get_list_row_html(row) {
 		return `
-			<a href="${web_form_name}?name=${row.name}">
+			<a href="${web_form_doc.name}?name=${row.name}">
 			<div class="row padding border-bottom">
 				<div class="col-sm-4">${row.name}</div>
 			</div>
@@ -47,37 +116,39 @@ function render_list() {
 	}
 }
 
-function render_form() {
-	const { web_form_doctype: doctype, doc_name: name, web_form_name } = web_form_settings;
-
-	const wrapper = $(`.page-container[data-path="${web_form_name}"] .page-content .page-content-wrapper .page_content`);
+function render_form(web_form_doc, wrapper) {
+	// const { web_form_doctype: doctype, doc_name: name, web_form_name } = web_form_settings;
 
 	frappe.call({
 		method: 'frappe.website.doctype.web_form.web_form.get_form_data',
-		args: { doctype, name, web_form_name }
+		args: { 
+			doctype: frappe.web_form_settings.web_form_doctype,
+			name: frappe.web_form_settings.doc_name
+		}
 	}).then(r => {
-		const { doc, web_form } = r.message;
-		// console.log(web_form);
-		// debugger;
-		render_form(doc, web_form);
+		// console.log(r);
+		const doc = r.message;
+		render_form(doc, web_form_doc);
+		render_head(web_form_doc, doc);
 	});
 
-	function render_form(doc, web_form) {
-		var me = this;
-		var link_field_list = [];
-		const fields = web_form.web_form_fields.map(df => {
-			if (df.fieldtype === 'Link') {
-				df.fieldtype = 'Data';
-				// link_field_list.push(df.fieldname);
-			}
+
+	function render_form(doc, web_form_doc) {
+		const fields = web_form_doc.web_form_fields.map(df => {
+			// if (df.fieldtype === 'Link') {
+			// 	df.fieldtype = 'Data';
+			// 	// link_field_list.push(df.fieldname);
+			// }
 
 			delete df.parent;
 			delete df.parentfield;
 			delete df.parenttype;
-			delete df.doctype;
+			// delete df.doctype;
 
 			return df;
 		});
+		$(`<div class="introduction"><p class="text-muted">${web_form_doc.introduction_text}</p></div>
+			<div class="form-message hide"></div><br>`).appendTo(wrapper);
 
 		// console.log(fields);
 		const layout = new frappe.ui.FieldGroup({
@@ -86,36 +157,37 @@ function render_form() {
 		});
 
 		layout.make();
-		console.log(layout);
-		for (var i in layout.fields_list) {
-			console.log(i);
-			let field = layout.fields_list[i];
-			if (field.input && link_field_list.includes(field.df.fieldname) ) {
-				// console.log(field);
-				// field.df.options = ["STD 1", "STD 2", "STD 3"];
-				// field_control = new frappe.ui.form.ControlAutocomplete(field);
-				// field_control.make_input();
-				console.log(field_control);
-				// var awesomplete = new Awesomplete(field.input, 
-				var awesomplete = new Awesomplete(field, {
-					minChars: 0,
-					maxItems: 99,
-					autoFirst: true,
-					list: ["STD I", "STD II"],
-					item: function(item, input) {
-						return $('<li>').text(item.value).get(0);
-					}
-				});
-				// 	filter: function(text, input) { return true },
-				// 	replace: function(text) {
-				// 		var before = this.input.value.match(/^.+,\s*|/)[0];
-				// 		this.input.value = before + text + ", ";
-				// 	}
-				// });
+
+		// console.log(layout);
+		// for (var i in layout.fields_list) {
+		// 	console.log(i);
+		// 	let field = layout.fields_list[i];
+		// 	if (field.input && link_field_list.includes(field.df.fieldname) ) {
+		// 		// console.log(field);
+		// 		// field.df.options = ["STD 1", "STD 2", "STD 3"];
+		// 		// field_control = new frappe.ui.form.ControlAutocomplete(field);
+		// 		// field_control.make_input();
+		// 		console.log(field_control);
+		// 		// var awesomplete = new Awesomplete(field.input, 
+		// 		var awesomplete = new Awesomplete(field, {
+		// 			minChars: 0,
+		// 			maxItems: 99,
+		// 			autoFirst: true,
+		// 			list: ["STD I", "STD II"],
+		// 			item: function(item, input) {
+		// 				return $('<li>').text(item.value).get(0);
+		// 			}
+		// 		});
+		// 		// 	filter: function(text, input) { return true },
+		// 		// 	replace: function(text) {
+		// 		// 		var before = this.input.value.match(/^.+,\s*|/)[0];
+		// 		// 		this.input.value = before + text + ", ";
+		// 		// 	}
+		// 		// });
 				
-				// setup_awesomplete_for_input(field.input);
-			}
-		}
+		// 		// setup_awesomplete_for_input(field.input);
+		// 	}
+		// }
 	}
 }
 
