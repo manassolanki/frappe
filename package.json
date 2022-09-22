@@ -3,7 +3,9 @@
   "scripts": {
     "build": "node rollup/build.js",
     "production": "FRAPPE_ENV=production node rollup/build.js",
-    "watch": "node rollup/watch.js"
+    "watch": "node rollup/watch.js",
+    "prepublish": "npm run snyk-protect",
+    "snyk-protect": "snyk-protect"
   },
   "repository": {
     "type": "git",
@@ -22,12 +24,13 @@
     "frappe-gantt": "^0.1.0",
     "fuse": "^0.4.0",
     "fuse.js": "^3.2.0",
-    "moment": "^2.20.1",
-    "redis": "^2.8.0",
-    "showdown": "^1.8.6",
-    "socket.io": "^2.0.4",
+    "moment": "^2.29.4",
+    "redis": "^3.1.1",
+    "showdown": "^2.0.2",
+    "socket.io": "^3.0.0",
     "superagent": "^3.8.2",
-    "touch": "^3.1.0"
+    "touch": "^3.1.0",
+    "@snyk/protect": "latest"
   },
   "devDependencies": {
     "babel-runtime": "^6.26.0",
@@ -40,5 +43,6 @@
     "rollup-plugin-node-resolve": "^3.0.2",
     "rollup-plugin-postcss": "^1.4.0",
     "rollup-plugin-uglify": "^3.0.0"
-  }
+  },
+  "snyk": true
 }
